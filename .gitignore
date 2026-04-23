@@ -43,3 +43,6 @@ staticfiles/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local backups
+backups/
