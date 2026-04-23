@@ -62,13 +62,13 @@ docker compose exec db psql -U chcrm_user -d chcrm
 \dt          -- список таблиц
 \d deals_deal     -- структура таблицы Deal
 \d deals_projectversion
-\d deals_task
+\d tasks_task
 \d clients_client
-\d deals_costitem  -- или где он лежит
+\d catalog_costitem
 \q
 ```
 
-- [ ] Все ожидаемые таблицы на месте (`deals_deal`, `deals_projectversion`, `deals_task`, `clients_client`, `deals_costitem`, `deals_changelog`, `accounts_user`)
+- [ ] Все ожидаемые таблицы на месте (`deals_deal`, `deals_projectversion`, `tasks_task`, `clients_client`, `catalog_costitem`, `deals_changelog`, `accounts_user`)
 - [ ] В таблицах видны все поля из плана
 - [ ] Есть индексы на ключевых полях (`project_code_normalized`, FK, unique constraints)
 
@@ -177,7 +177,7 @@ print([v.version_number for v in d.projectversion_set.all().order_by('version_nu
 
 В shell:
 ```python
-from deals.models import Task
+from tasks.models import Task
 from django.utils import timezone
 
 t = Task.objects.create(title="Тест", due_date=timezone.now().date(), assignee_id=1)

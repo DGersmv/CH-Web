@@ -26,6 +26,15 @@ class ChangeLogAdmin(admin.ModelAdmin):
     search_fields = ('project_version__deal__project_code', 'field_path')
     ordering = ('-changed_at',)
 
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
 
 @admin.register(Deal)
 class DealAdmin(admin.ModelAdmin):

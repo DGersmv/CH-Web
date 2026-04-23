@@ -8,14 +8,16 @@ from deals.models import Deal
 class Task(models.Model):
     deal = models.ForeignKey(
         Deal,
-        on_delete=models.SET_NULL,
+        on_delete=models.CASCADE,
         null=True,
         blank=True,
         related_name='tasks',
     )
     assignee = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='tasks',
     )
     title = models.CharField(max_length=255)
