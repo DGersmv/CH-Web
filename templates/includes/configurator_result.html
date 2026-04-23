@@ -1,11 +1,17 @@
 <div class="card">
-    <div class="card-header">Расчёт</div>
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Расчёт</span>
+        {% if calc_result.schema_version %}
+            <span class="badge text-bg-secondary">{{ calc_result.schema_version }}</span>
+        {% endif %}
+    </div>
     <div class="card-body p-0">
         {% if calc_result %}
             <div class="table-responsive">
                 <table class="table table-sm table-striped mb-0">
                     <thead>
                         <tr>
+                            <th>Код</th>
                             <th>Позиция</th>
                             <th>Кол-во</th>
                             <th>Материал</th>
@@ -16,6 +22,7 @@
                     <tbody>
                         {% for row in calc_result.rows %}
                             <tr>
+                                <td><code>{{ row.code }}</code></td>
                                 <td>{{ row.label }}</td>
                                 <td>{{ row.quantity|floatformat:2 }} {{ row.unit }}</td>
                                 <td>{{ row.material_total|floatformat:2 }} ₽</td>

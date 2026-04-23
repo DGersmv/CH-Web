@@ -11,7 +11,7 @@ from clients.models import Client
 
 from .forms import DealConfiguratorForm, DealCreateForm
 from .models import ChangeLog, Deal
-from .services.calculation_engine import calculate_config
+from .services.calculation_engine import CALC_SCHEMA_VERSION, calculate_config
 
 
 @login_required
@@ -141,10 +141,31 @@ def _draft_config_initial(deal, user):
         'building_area': config_inputs.get('building_area', '120'),
         'living_area': config_inputs.get('living_area', '90'),
         'ceiling_height': config_inputs.get('ceiling_height', '2.7'),
-        'floor_insulation': config_inputs.get('floor_insulation', '200'),
-        'roof_type': config_inputs.get('roof_type', 'gable'),
+        'floor_150_qty': config_inputs.get('floor_150_qty', '0'),
+        'floor_200_qty': config_inputs.get('floor_200_qty', '120'),
+        'floor_250_qty': config_inputs.get('floor_250_qty', '0'),
+        'floor_laminate_qty': config_inputs.get('floor_laminate_qty', '90'),
+        'floor_tile_qty': config_inputs.get('floor_tile_qty', '0'),
+        'facade_planken_lm': config_inputs.get('facade_planken_lm', '0'),
+        'facade_combined_lm': config_inputs.get('facade_combined_lm', '48'),
+        'partition_double_lm': config_inputs.get('partition_double_lm', '24'),
+        'partition_single_lm': config_inputs.get('partition_single_lm', '16'),
+        'finish_quarter_lm': config_inputs.get('finish_quarter_lm', '0'),
+        'finish_ldsp_lm': config_inputs.get('finish_ldsp_lm', '48'),
+        'finish_gkl_lm': config_inputs.get('finish_gkl_lm', '0'),
+        'finish_mdf_lm': config_inputs.get('finish_mdf_lm', '0'),
+        'finish_plywood_lm': config_inputs.get('finish_plywood_lm', '0'),
+        'bathroom_tile_lm': config_inputs.get('bathroom_tile_lm', '0'),
+        'roof_gable_qty': config_inputs.get('roof_gable_qty', '120'),
+        'roof_flat_qty': config_inputs.get('roof_flat_qty', '0'),
+        'interior_doors_count': config_inputs.get('interior_doors_count', 5),
         'windows_count': config_inputs.get('windows_count', 8),
+        'windows_total_cost': config_inputs.get('windows_total_cost', '0'),
+        'panoramic_sections_count': config_inputs.get('panoramic_sections_count', 0),
+        'panoramic_sections_total_cost': config_inputs.get('panoramic_sections_total_cost', '0'),
         'sauna_cost': config_inputs.get('sauna_cost', '0'),
+        'sauna_installation_cost': config_inputs.get('sauna_installation_cost', '0'),
+        'bathrooms_count': config_inputs.get('bathrooms_count', 1),
     }
 
 
@@ -206,6 +227,7 @@ def save_configurator_draft(request, deal_id):
     changed_keys = [key for key in new_inputs.keys() if str(old_inputs.get(key, '')) != str(new_inputs.get(key, ''))]
 
     draft.frozen_data = {
+        'calc_schema_version': CALC_SCHEMA_VERSION,
         'config_inputs': _json_ready(new_inputs),
         'calculation': _json_ready(calc_result),
         'saved_at': timezone.now().isoformat(),

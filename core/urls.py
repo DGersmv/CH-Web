@@ -17,6 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 
+from deals.api_views import PluginProjectVersionCreateApi
 from deals.views import (
     DealCreateView,
     claim_lead,
@@ -31,6 +32,7 @@ from tasks.views import TaskListView, create_task_for_deal, toggle_task
 
 urlpatterns = [
     path('', home, name='home'),
+    path('api/plugin/project-versions/', PluginProjectVersionCreateApi.as_view(), name='plugin_project_versions_create'),
     path('search/global/', global_search, name='global_search'),
     path('deals/', DealListView.as_view(), name='deals'),
     path('deals/new/', DealCreateView.as_view(), name='deal_create'),
