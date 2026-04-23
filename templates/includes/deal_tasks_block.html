@@ -1,0 +1,27 @@
+<div class="card h-100" id="deal-tasks-block">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Задачи по сделке</span>
+        <button
+            type="button"
+            class="btn btn-sm btn-primary"
+            data-bs-toggle="modal"
+            data-bs-target="#taskCreateModal"
+            hx-get="{% url 'deal_task_create' deal.id %}"
+            hx-target="#task-create-modal-body"
+            hx-swap="innerHTML"
+        >
+            + Задача
+        </button>
+    </div>
+    <div class="card-body">
+        {% if tasks_for_deal %}
+            <ul class="list-group list-group-flush">
+                {% for task in tasks_for_deal %}
+                    {% include "includes/task_row.html" with task=task show_deal=False compact=True %}
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="text-muted mb-0">По сделке пока нет задач.</p>
+        {% endif %}
+    </div>
+</div>

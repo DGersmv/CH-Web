@@ -1,0 +1,30 @@
+<div class="card" id="dashboard-leads-block">
+    <div class="card-header">Новые лиды без ответственного</div>
+    <div class="card-body">
+        {% if new_leads %}
+            <ul class="list-group list-group-flush">
+                {% for deal in new_leads %}
+                    <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+                        <div>
+                            <a href="{% url 'deal_detail' deal.id %}">{{ deal.project_code }}</a>
+                            <div class="small text-muted">
+                                {{ deal.get_status_display }}{% if deal.client %} • {{ deal.client.full_name }}{% endif %}
+                            </div>
+                        </div>
+                        <form
+                            method="post"
+                            hx-post="{% url 'dashboard_claim_lead' deal.id %}"
+                            hx-target="#dashboard-leads-block"
+                            hx-swap="outerHTML"
+                        >
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-primary">Взять в работу</button>
+                        </form>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="text-muted mb-0">Лидов без ответственного нет.</p>
+        {% endif %}
+    </div>
+</div>

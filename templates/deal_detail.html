@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-start mb-4">
+        <div>
+            <h1 class="mb-1">{{ deal.project_code }}</h1>
+            <div class="text-muted">
+                <span class="me-3 d-inline-flex align-items-center gap-2">
+                    Статус:
+                    {% include "includes/deal_status_block.html" with deal=deal status_choices=status_choices %}
+                </span>
+                <span class="me-3">Модулей: {{ deal.module_count }}</span>
+                <span class="me-3 d-inline-flex align-items-center gap-2">
+                    Менеджер:
+                    {% include "includes/deal_manager_block.html" with deal=deal manager_choices=manager_choices %}
+                </span>
+                <span class="d-inline-flex align-items-center gap-2">
+                    Наценка:
+                    {% include "includes/deal_margin_block.html" with deal=deal %}
+                </span>
+            </div>
+        </div>
+        <a href="{% url 'deals' %}" class="btn btn-outline-secondary btn-sm">К списку сделок</a>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Клиент</div>
+                <div class="card-body">
+                    {% if deal.client %}
+                        <p class="mb-1"><strong>{{ deal.client.full_name }}</strong></p>
+                        <p class="mb-1">Телефон: {{ deal.client.phone|default:"—" }}</p>
+                        <p class="mb-1">Email: {{ deal.client.email|default:"—" }}</p>
+                        <p class="mb-0">Локация: {{ deal.client.location|default:"—" }}</p>
+                    {% else %}
+                        <p class="text-muted mb-0">Клиент не привязан.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            {% include "includes/deal_tasks_block.html" with deal=deal tasks_for_deal=tasks_for_deal %}
+        </div>
+
+        <div class="col-12">
+            {% include "includes/configurator_block.html" with deal=deal config_form=config_form calc_result=calc_result draft_version=draft_version save_success=save_success %}
+        </div>
+
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">История версий</div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-striped mb-0">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Источник</th>
+                                    <th>Статус</th>
+                                    <th>Создана</th>
+                                    <th>Создал</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for version in versions %}
+                                    <tr>
+                                        <td>{{ version.version_number }}</td>
+                                        <td>{{ version.get_source_display }}</td>
+                                        <td>{{ version.get_status_display }}</td>
+                                        <td>{{ version.created_at|date:"d.m.Y H:i" }}</td>
+                                        <td>{{ version.created_by.username|default:"—" }}</td>
+                                    </tr>
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="5" class="text-muted">Версий пока нет.</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">Журнал изменений</div>
+                <div class="card-body">
+                    {% if change_logs %}
+                        <ul class="list-group list-group-flush">
+                            {% for log in change_logs %}
+                                <li class="list-group-item px-0">
+                                    <strong>{{ log.field_path }}</strong>:
+                                    {{ log.old_value|default:"—" }} -> {{ log.new_value|default:"—" }}
+                                    <span class="text-muted">({{ log.changed_at|date:"d.m.Y H:i" }}, {{ log.changed_by.username|default:"system" }})</span>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="text-muted mb-0">Журнал пока пуст.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="taskCreateModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Новая задача</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="task-create-modal-body">
+                    <p class="text-muted mb-0">Загрузка формы...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

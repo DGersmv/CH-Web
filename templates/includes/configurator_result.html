@@ -1,0 +1,39 @@
+<div class="card">
+    <div class="card-header">Расчёт</div>
+    <div class="card-body p-0">
+        {% if calc_result %}
+            <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Позиция</th>
+                            <th>Кол-во</th>
+                            <th>Материал</th>
+                            <th>Работа</th>
+                            <th>Итого</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in calc_result.rows %}
+                            <tr>
+                                <td>{{ row.label }}</td>
+                                <td>{{ row.quantity|floatformat:2 }} {{ row.unit }}</td>
+                                <td>{{ row.material_total|floatformat:2 }} ₽</td>
+                                <td>{{ row.work_total|floatformat:2 }} ₽</td>
+                                <td>{{ row.line_total|floatformat:2 }} ₽</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="p-3 border-top">
+                <div>Материалы: <strong>{{ calc_result.totals.material_total|floatformat:2 }} ₽</strong></div>
+                <div>Работа: <strong>{{ calc_result.totals.work_total|floatformat:2 }} ₽</strong></div>
+                <div>Подытог: <strong>{{ calc_result.totals.subtotal|floatformat:2 }} ₽</strong></div>
+                <div>С наценкой {{ calc_result.totals.margin_percent|floatformat:2 }}%: <strong>{{ calc_result.totals.with_margin|floatformat:2 }} ₽</strong></div>
+            </div>
+        {% else %}
+            <div class="p-3 text-muted">Заполните параметры для расчёта.</div>
+        {% endif %}
+    </div>
+</div>

@@ -1,0 +1,36 @@
+<form
+    method="post"
+    hx-post="{% url 'deal_task_create' deal.id %}"
+    hx-target="#deal-tasks-block"
+    hx-swap="outerHTML"
+>
+    {% csrf_token %}
+    <div class="mb-3">
+        <label class="form-label" for="{{ form.title.id_for_label }}">Название</label>
+        {{ form.title }}
+        {% if form.title.errors %}
+            <div class="text-danger small">{{ form.title.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="{{ form.due_date.id_for_label }}">Срок</label>
+        {{ form.due_date }}
+        {% if form.due_date.errors %}
+            <div class="text-danger small">{{ form.due_date.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="{{ form.assignee.id_for_label }}">Исполнитель</label>
+        {{ form.assignee }}
+        {% if form.assignee.errors %}
+            <div class="text-danger small">{{ form.assignee.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+    {% if form.non_field_errors %}
+        <div class="text-danger small mb-2">{{ form.non_field_errors|join:", " }}</div>
+    {% endif %}
+    <div class="d-flex justify-content-end gap-2">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="submit" class="btn btn-primary">Создать</button>
+    </div>
+</form>

@@ -1,0 +1,68 @@
+<div class="card" id="configurator-block">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Конфигуратор (draft v{{ draft_version.version_number }})</span>
+        {% if save_success %}
+            <span class="badge text-bg-success">Сохранено</span>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <form
+            method="post"
+            hx-post="{% url 'config_recalc' deal.id %}"
+            hx-target="#configurator-block"
+            hx-swap="outerHTML"
+            hx-trigger="change delay:300ms from:input, change delay:300ms from:select"
+            id="configurator-form"
+            class="row g-3"
+        >
+            {% csrf_token %}
+            <div class="col-md-4">
+                <label class="form-label" for="{{ config_form.building_area.id_for_label }}">{{ config_form.building_area.label }}</label>
+                {{ config_form.building_area }}
+                {% if config_form.building_area.errors %}<div class="text-danger small">{{ config_form.building_area.errors|join:", " }}</div>{% endif %}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="{{ config_form.living_area.id_for_label }}">{{ config_form.living_area.label }}</label>
+                {{ config_form.living_area }}
+                {% if config_form.living_area.errors %}<div class="text-danger small">{{ config_form.living_area.errors|join:", " }}</div>{% endif %}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="{{ config_form.ceiling_height.id_for_label }}">{{ config_form.ceiling_height.label }}</label>
+                {{ config_form.ceiling_height }}
+                {% if config_form.ceiling_height.errors %}<div class="text-danger small">{{ config_form.ceiling_height.errors|join:", " }}</div>{% endif %}
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label" for="{{ config_form.floor_insulation.id_for_label }}">{{ config_form.floor_insulation.label }}</label>
+                {{ config_form.floor_insulation }}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="{{ config_form.roof_type.id_for_label }}">{{ config_form.roof_type.label }}</label>
+                {{ config_form.roof_type }}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="{{ config_form.windows_count.id_for_label }}">{{ config_form.windows_count.label }}</label>
+                {{ config_form.windows_count }}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="{{ config_form.sauna_cost.id_for_label }}">{{ config_form.sauna_cost.label }}</label>
+                {{ config_form.sauna_cost }}
+            </div>
+
+            <div class="col-12 d-flex gap-2">
+                <button type="submit" class="btn btn-outline-primary">Пересчитать</button>
+                <button
+                    type="submit"
+                    class="btn btn-primary"
+                    formaction="{% url 'config_save' deal.id %}"
+                    hx-post="{% url 'config_save' deal.id %}"
+                >
+                    Сохранить draft
+                </button>
+            </div>
+        </form>
+    </div>
+    <div class="card-footer bg-white">
+        {% include "includes/configurator_result.html" with calc_result=calc_result %}
+    </div>
+</div>

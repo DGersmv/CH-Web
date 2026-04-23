@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="mb-0">Новая сделка</h1>
+        <a href="{% url 'deals' %}" class="btn btn-outline-secondary">К списку</a>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <form method="post" class="row g-3">
+                {% csrf_token %}
+                <div class="col-12">
+                    <label class="form-label" for="{{ form.project_code.id_for_label }}">Project code</label>
+                    {{ form.project_code }}
+                    {% if form.project_code.errors %}
+                        <div class="text-danger small">{{ form.project_code.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="{{ form.module_count.id_for_label }}">Количество модулей</label>
+                    {{ form.module_count }}
+                    {% if form.module_count.errors %}
+                        <div class="text-danger small">{{ form.module_count.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="{{ form.client.id_for_label }}">Клиент</label>
+                    {{ form.client }}
+                    {% if form.client.errors %}
+                        <div class="text-danger small">{{ form.client.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="{{ form.assigned_manager.id_for_label }}">Менеджер</label>
+                    {{ form.assigned_manager }}
+                    {% if form.assigned_manager.errors %}
+                        <div class="text-danger small">{{ form.assigned_manager.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-12">
+                    <label class="form-label" for="{{ form.new_client_name.id_for_label }}">{{ form.new_client_name.label }}</label>
+                    {{ form.new_client_name }}
+                    <div class="form-text">Если клиент не выбран, можно ввести имя здесь.</div>
+                    {% if form.new_client_name.errors %}
+                        <div class="text-danger small">{{ form.new_client_name.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">Создать сделку</button>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}

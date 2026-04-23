@@ -1,0 +1,20 @@
+<span id="deal-margin-block" class="d-inline-flex align-items-center gap-2">
+    <strong>{{ deal.margin_percent|floatformat:2 }}%</strong>
+    <form
+        method="post"
+        hx-post="{% url 'deal_margin_update' deal.id %}"
+        hx-target="#deal-margin-block"
+        hx-swap="outerHTML"
+    >
+        {% csrf_token %}
+        <input
+            type="number"
+            name="margin_percent"
+            step="0.01"
+            class="form-control form-control-sm"
+            value="{{ deal.margin_percent }}"
+            style="max-width: 110px;"
+            onblur="this.form.requestSubmit()"
+        >
+    </form>
+</span>

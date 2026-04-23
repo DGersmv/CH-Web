@@ -1,0 +1,26 @@
+<li id="task-row-{{ task.id }}" class="list-group-item px-0 d-flex justify-content-between align-items-center">
+    <div class="d-flex align-items-center gap-2">
+        <form
+            method="post"
+            hx-post="{% url 'task_toggle' task.id %}?{% if show_deal %}show_deal=1&{% endif %}{% if compact %}compact=1{% endif %}"
+            hx-target="#task-row-{{ task.id }}"
+            hx-swap="outerHTML"
+        >
+            {% csrf_token %}
+            <input
+                class="form-check-input mt-0"
+                type="checkbox"
+                {% if task.is_done %}checked disabled{% endif %}
+                onchange="this.form.requestSubmit()"
+                aria-label="Отметить задачу выполненной"
+            >
+        </form>
+        <div class="{% if task.is_done %}text-decoration-line-through text-muted{% endif %}">
+            <div>{{ task.title }}</div>
+            {% if show_deal and task.deal %}
+                <small class="text-muted">{{ task.deal.project_code }}</small>
+            {% endif %}
+        </div>
+    </div>
+    <small class="text-muted">{{ task.due_date|date:"d.m.Y" }}</small>
+</li>

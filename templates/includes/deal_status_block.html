@@ -1,0 +1,16 @@
+<span id="deal-status-block" class="d-inline-flex align-items-center gap-2">
+    <span class="badge text-bg-secondary">{{ deal.get_status_display }}</span>
+    <form
+        method="post"
+        hx-post="{% url 'deal_status_update' deal.id %}"
+        hx-target="#deal-status-block"
+        hx-swap="outerHTML"
+    >
+        {% csrf_token %}
+        <select class="form-select form-select-sm" name="status" onchange="this.form.requestSubmit()">
+            {% for value, label in status_choices %}
+                <option value="{{ value }}" {% if deal.status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </form>
+</span>

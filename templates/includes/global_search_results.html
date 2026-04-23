@@ -1,0 +1,18 @@
+{% if query and results %}
+    <div class="list-group shadow-sm">
+        {% for item in results %}
+            <a href="{{ item.url }}" class="list-group-item list-group-item-action">
+                <div class="d-flex w-100 justify-content-between">
+                    <strong>{{ item.label }}</strong>
+                    <small class="text-muted">{{ item.type }}</small>
+                </div>
+                <small class="text-muted">{{ item.subtitle }}</small>
+            </a>
+        {% endfor %}
+    </div>
+{% elif query %}
+    <div class="list-group shadow-sm">
+        <div class="list-group-item text-muted">Ничего не найдено</div>
+    </div>
+{% else %}
+{% endif %}

@@ -1,0 +1,19 @@
+<span id="deal-manager-block" class="d-inline-flex align-items-center gap-2">
+    <strong>{{ deal.assigned_manager.username|default:"—" }}</strong>
+    <form
+        method="post"
+        hx-post="{% url 'deal_manager_update' deal.id %}"
+        hx-target="#deal-manager-block"
+        hx-swap="outerHTML"
+    >
+        {% csrf_token %}
+        <select class="form-select form-select-sm" name="assigned_manager" onchange="this.form.requestSubmit()">
+            <option value="">Не назначен</option>
+            {% for manager in manager_choices %}
+                <option value="{{ manager.id }}" {% if deal.assigned_manager_id == manager.id %}selected{% endif %}>
+                    {{ manager.username }}
+                </option>
+            {% endfor %}
+        </select>
+    </form>
+</span>

@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="mb-0">Сделки</h1>
+        <a href="{% url 'deal_create' %}" class="btn btn-primary">+ Новая сделка</a>
+    </div>
+    <form method="get" class="row g-3 mb-3">
+        <div class="col-md-6">
+            <label for="q" class="form-label">Поиск</label>
+            <input
+                type="text"
+                class="form-control"
+                id="q"
+                name="q"
+                value="{{ search_query }}"
+                placeholder="Код проекта, клиент или телефон"
+            >
+        </div>
+        <div class="col-md-3">
+            <label for="status" class="form-label">Статус</label>
+            <select name="status" id="status" class="form-select">
+                <option value="">Все</option>
+                {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label for="assigned_manager" class="form-label">Менеджер</label>
+            <select name="assigned_manager" id="assigned_manager" class="form-select">
+                <option value="">Все</option>
+                {% for manager in manager_choices %}
+                    <option value="{{ manager.id }}" {% if selected_manager == manager.id|stringformat:"s" %}selected{% endif %}>{{ manager.username }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-12">
+            <label class="form-label d-block">Количество модулей</label>
+            <div class="btn-group flex-wrap" role="group" aria-label="Модули">
+                <input type="radio" class="btn-check" name="module_count" id="module_all" value="" {% if not selected_module_count %}checked{% endif %}>
+                <label class="btn btn-outline-secondary" for="module_all">Все</label>
+                {% for mc in module_choices %}
+                    <input type="radio" class="btn-check" name="module_count" id="module_{{ mc }}" value="{{ mc }}" {% if selected_module_count == mc|stringformat:"s" %}checked{% endif %}>
+                    <label class="btn btn-outline-secondary" for="module_{{ mc }}">{{ mc }}</label>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="col-12">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="mine" id="mine" value="1" {% if selected_mine %}checked{% endif %}>
+                <label class="form-check-label" for="mine">Мои сделки</label>
+            </div>
+        </div>
+        <div class="col-12">
+            <button type="submit" class="btn btn-primary">Применить</button>
+            <a href="{% url 'deals' %}" class="btn btn-outline-secondary">Сбросить</a>
+        </div>
+    </form>
+
+    <div class="table-responsive">
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>Код проекта</th>
+                    <th>Клиент</th>
+                    <th>Модули</th>
+                    <th>Статус</th>
+                    <th>Менеджер</th>
+                    <th>Обновлено</th>
+                    <th>Сумма последней версии</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for deal in deals %}
+                    <tr>
+                        <td><a href="{% url 'deal_detail' deal.pk %}">{{ deal.project_code }}</a></td>
+                        <td>{{ deal.client.full_name|default:"—" }}</td>
+                        <td>{{ deal.module_count }}</td>
+                        <td>
+                            <span class="badge text-bg-secondary">{{ deal.get_status_display }}</span>
+                        </td>
+                        <td>{{ deal.assigned_manager.username|default:"—" }}</td>
+                        <td>{{ deal.updated_at|date:"d.m.Y H:i" }}</td>
+                        <td>
+                            {% if deal.latest_total %}
+                                {{ deal.latest_total|floatformat:2 }} ₽
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-muted">Сделки пока отсутствуют.</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if is_paginated %}
+        <nav aria-label="Pagination">
+            <ul class="pagination">
+                {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?{% if current_filters %}{{ current_filters }}&{% endif %}page={{ page_obj.previous_page_number }}">Назад</a>
+                    </li>
+                {% endif %}
+                <li class="page-item disabled">
+                    <span class="page-link">Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
+                </li>
+                {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?{% if current_filters %}{{ current_filters }}&{% endif %}page={{ page_obj.next_page_number }}">Вперёд</a>
+                    </li>
+                {% endif %}
+            </ul>
+        </nav>
+    {% endif %}
+{% endblock %}
