@@ -1,0 +1,45 @@
+from django.contrib import admin
+
+from .models import ChangeLog, Deal, ProjectVersion
+
+
+class ProjectVersionInline(admin.TabularInline):
+    model = ProjectVersion
+    extra = 0
+    fields = ('version_number', 'source', 'status', 'created_by', 'created_at')
+    readonly_fields = ('created_at',)
+    ordering = ('-version_number',)
+
+
+@admin.register(ProjectVersion)
+class ProjectVersionAdmin(admin.ModelAdmin):
+    list_display = ('deal', 'version_number', 'source', 'status', 'created_by', 'created_at')
+    list_filter = ('source', 'status', 'created_at')
+    search_fields = ('deal__project_code',)
+    ordering = ('-created_at',)
+
+
+@admin.register(ChangeLog)
+class ChangeLogAdmin(admin.ModelAdmin):
+    list_display = ('project_version', 'field_path', 'changed_by', 'changed_at')
+    list_filter = ('changed_at', 'changed_by')
+    search_fields = ('project_version__deal__project_code', 'field_path')
+    ordering = ('-changed_at',)
+
+
+@admin.register(Deal)
+class DealAdmin(admin.ModelAdmin):
+    list_display = (
+        'project_code',
+        'project_code_normalized',
+        'module_count',
+        'status',
+        'client',
+        'assigned_manager',
+        'margin_percent',
+        'updated_at',
+    )
+    list_filter = ('status', 'module_count', 'assigned_manager', 'created_at', 'updated_at')
+    search_fields = ('project_code', 'project_code_normalized', 'client__full_name')
+    ordering = ('-updated_at',)
+    inlines = (ProjectVersionInline,)
