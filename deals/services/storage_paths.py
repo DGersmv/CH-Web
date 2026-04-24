@@ -38,6 +38,8 @@ def ensure_deal_dirs(deal) -> None:
         Path("incoming/designer/plans_pdf"),
         Path("incoming/designer/dwg"),
         Path("incoming/designer/reference"),
+        Path("incoming/sales/photos"),
+        Path("incoming/sales/docs"),
         Path("outgoing/client"),
         Path("system"),
         Path("archive"),

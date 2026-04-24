@@ -1,0 +1,36 @@
+<div id="notifications-block" class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Уведомления</span>
+        <form method="post" action="{% url 'notifications_mark_all_read' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Отметить все прочитанными</button>
+        </form>
+    </div>
+    <div class="card-body">
+        {% if latest_notifications %}
+            <ul class="list-group list-group-flush">
+                {% for notification in latest_notifications %}
+                    <li class="list-group-item px-0 d-flex justify-content-between align-items-start">
+                        <div>
+                            <div>
+                                <strong>{{ notification.title }}</strong>
+                                {% if not notification.is_read %}
+                                    <span class="badge text-bg-danger ms-2">new</span>
+                                {% endif %}
+                            </div>
+                            <div class="small text-muted">
+                                {% if notification.actor %}
+                                    от {{ notification.actor.username }}
+                                {% endif %}
+                                {% if notification.body %} — {{ notification.body }}{% endif %}
+                            </div>
+                        </div>
+                        <small class="text-muted">{{ notification.created_at|date:"d.m.Y H:i" }}</small>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="text-muted mb-0">Пока нет уведомлений.</p>
+        {% endif %}
+    </div>
+</div>

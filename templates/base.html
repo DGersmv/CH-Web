@@ -46,8 +46,15 @@
                             style="z-index: 1050;"
                         ></div>
                     </div>
+                    <a class="btn btn-outline-secondary btn-sm me-2" href="{% url 'home' %}#notifications-block">
+                        Уведомления
+                        <span
+                            id="unread-notifications-badge"
+                            class="badge text-bg-danger ms-1 {% if not unread_notifications %}d-none{% endif %}"
+                        >{{ unread_notifications }}</span>
+                    </a>
                     <span class="navbar-text me-3">Вы вошли как {{ current_user.username }}</span>
-                    <a class="btn btn-outline-secondary btn-sm" href="{% url 'logout' %}">Выход</a>
+                    <a class="btn btn-outline-secondary btn-sm" href="{% url 'logout' %}" target="_top">Выход</a>
                 </div>
             </div>
         </nav>
@@ -68,6 +75,36 @@
             const modal = window.bootstrap.Modal.getInstance(modalEl);
             if (modal) modal.hide();
         });
+
+        (function () {
+            if (!window.WebSocket || !document.body) return;
+            var protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+            var ws = new WebSocket(protocol + window.location.host + '/ws/events/');
+            var badge = document.getElementById('unread-notifications-badge');
+
+            function bumpBadge() {
+                if (!badge) return;
+                var current = parseInt((badge.textContent || '0').trim(), 10) || 0;
+                badge.textContent = String(current + 1);
+                badge.classList.remove('d-none');
+            }
+
+            ws.onmessage = function (event) {
+                try {
+                    var payload = JSON.parse(event.data || '{}');
+                    if (payload.type === 'notification.created') {
+                        bumpBadge();
+                        if (window.location.pathname === '/') {
+                            window.location.reload();
+                        }
+                    } else if (payload.type === 'message.created' && window.location.pathname === '/') {
+                        window.location.reload();
+                    }
+                } catch (e) {
+                    console.error('WS parse error', e);
+                }
+            };
+        })();
     </script>
 </body>
 </html>

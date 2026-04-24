@@ -159,6 +159,7 @@ class ProjectFile(models.Model):
     class Source(models.TextChoices):
         CLIENT = 'client', 'Client'
         DESIGNER = 'designer', 'Designer'
+        SALES = 'sales', 'Sales'
         SYSTEM = 'system', 'System'
 
     class Category(models.TextChoices):

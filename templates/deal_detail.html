@@ -5,111 +5,129 @@
         <div>
             <h1 class="mb-1">{{ deal.project_code }}</h1>
             <div class="text-muted">
-                <span class="me-3 d-inline-flex align-items-center gap-2">
-                    Статус:
-                    {% include "includes/deal_status_block.html" with deal=deal status_choices=status_choices %}
-                </span>
-                <span class="me-3 d-inline-flex align-items-center gap-2">
-                    Модулей:
-                    {% include "includes/deal_module_block.html" with deal=deal %}
-                </span>
-                <span class="me-3 d-inline-flex align-items-center gap-2">
-                    Менеджер:
-                    {% include "includes/deal_manager_block.html" with deal=deal manager_choices=manager_choices %}
-                </span>
-                <span class="d-inline-flex align-items-center gap-2">
-                    Наценка:
-                    {% include "includes/deal_margin_block.html" with deal=deal %}
-                </span>
+                {% if is_file_only_role %}
+                    <span class="me-3">Статус: {{ deal.get_status_display }}</span>
+                    <span class="me-3">Модулей: {{ deal.module_count }}</span>
+                {% else %}
+                    <span class="me-3 d-inline-flex align-items-center gap-2">
+                        Статус:
+                        {% include "includes/deal_status_block.html" with deal=deal status_choices=status_choices %}
+                    </span>
+                    <span class="me-3 d-inline-flex align-items-center gap-2">
+                        Модулей:
+                        {% include "includes/deal_module_block.html" with deal=deal %}
+                    </span>
+                    <span class="me-3 d-inline-flex align-items-center gap-2">
+                        Менеджер:
+                        {% include "includes/deal_manager_block.html" with deal=deal manager_choices=manager_choices %}
+                    </span>
+                    <span class="d-inline-flex align-items-center gap-2">
+                        Наценка:
+                        {% include "includes/deal_margin_block.html" with deal=deal %}
+                    </span>
+                {% endif %}
             </div>
         </div>
         <a href="{% url 'deals' %}" class="btn btn-outline-secondary btn-sm">К списку сделок</a>
     </div>
 
     <div class="row g-3">
-        <div class="col-lg-7">
-            <div class="row g-3">
-                <div class="col-12">
-                    <div class="card">
-                        <div class="card-header py-2">Клиент</div>
-                        <div class="card-body py-2">
-                            {% if deal.client %}
-                                <p class="mb-1"><strong>{{ deal.client.full_name }}</strong></p>
-                                <p class="mb-1">Телефон: {{ deal.client.phone|default:"—" }}</p>
-                                <p class="mb-1">Email: {{ deal.client.email|default:"—" }}</p>
-                                <p class="mb-0">Локация: {{ deal.client.location|default:"—" }}</p>
-                            {% else %}
-                                <p class="text-muted mb-0">Клиент не привязан.</p>
-                            {% endif %}
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header py-2">Клиент</div>
+                <div class="card-body py-2">
+                    {% if deal.client %}
+                        <p class="mb-1"><strong>{{ deal.client.full_name }}</strong></p>
+                        <p class="mb-1">Телефон: {{ deal.client.phone|default:"—" }}</p>
+                        <p class="mb-1">Email: {{ deal.client.email|default:"—" }}</p>
+                        <p class="mb-0">Локация: {{ deal.client.location|default:"—" }}</p>
+                    {% else %}
+                        <p class="text-muted mb-0">Клиент не привязан.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% if not is_file_only_role %}
+            <div class="col-lg-6">
+                {% include "includes/deal_cost_panel.html" with deal=deal cost_summary=cost_summary %}
+            </div>
+        {% endif %}
+        <div class="col-12">
+            {% include "includes/deal_files_block.html" with deal=deal client_files=client_files designer_files=designer_files sales_files=sales_files client_upload_form=client_upload_form designer_upload_form=designer_upload_form sales_upload_form=sales_upload_form %}
+        </div>
+
+        <div class="col-12">
+            {% include "includes/deal_tasks_block.html" with deal=deal tasks_for_deal=tasks_for_deal %}
+        </div>
+
+        {% if not is_file_only_role %}
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">История версий</div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-striped mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Источник</th>
+                                        <th>Статус</th>
+                                        <th>Создана</th>
+                                        <th>Создал</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for version in versions %}
+                                        <tr>
+                                            <td>{{ version.version_number }}</td>
+                                            <td>{{ version.get_source_display }}</td>
+                                            <td>{{ version.get_status_display }}</td>
+                                            <td>{{ version.created_at|date:"d.m.Y H:i" }}</td>
+                                            <td>{{ version.created_by.username|default:"—" }}</td>
+                                        </tr>
+                                    {% empty %}
+                                        <tr>
+                                            <td colspan="5" class="text-muted">Версий пока нет.</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
-                <div class="col-12">
-                    {% include "includes/deal_files_block.html" with deal=deal client_files=client_files designer_files=designer_files client_upload_form=client_upload_form designer_upload_form=designer_upload_form %}
-                </div>
             </div>
-        </div>
-        <div class="col-lg-5">
-            <div class="row g-3">
-                <div class="col-12">
-                    {% include "includes/deal_tasks_block.html" with deal=deal tasks_for_deal=tasks_for_deal %}
-                </div>
-                <div class="col-12">
-                    {% include "includes/deal_cost_panel.html" with deal=deal cost_summary=cost_summary %}
-                </div>
-            </div>
-        </div>
+        {% endif %}
 
-        <div class="col-12">
-            <div class="collapse" id="calculation-panel">
-                {% include "includes/configurator_block.html" with deal=deal config_form=config_form calc_result=calc_result draft_version=draft_version save_success=save_success %}
-            </div>
-        </div>
-
-        <div class="col-12">
+        {% if not is_file_only_role %}
+            <div class="col-12">
             <div class="card">
-                <div class="card-header">История версий</div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-striped mb-0">
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>Источник</th>
-                                    <th>Статус</th>
-                                    <th>Создана</th>
-                                    <th>Создал</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for version in versions %}
-                                    <tr>
-                                        <td>{{ version.version_number }}</td>
-                                        <td>{{ version.get_source_display }}</td>
-                                        <td>{{ version.get_status_display }}</td>
-                                        <td>{{ version.created_at|date:"d.m.Y H:i" }}</td>
-                                        <td>{{ version.created_by.username|default:"—" }}</td>
-                                    </tr>
-                                {% empty %}
-                                    <tr>
-                                        <td colspan="5" class="text-muted">Версий пока нет.</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Журнал изменений</span>
+                    <button
+                        class="btn btn-sm btn-outline-secondary"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#change-log-panel"
+                        aria-expanded="false"
+                        aria-controls="change-log-panel"
+                    >
+                        Свернуть/развернуть
+                    </button>
                 </div>
-            </div>
-        </div>
-
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">Журнал изменений</div>
-                <div class="card-body">
+                <div class="collapse show" id="change-log-panel">
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <input
+                                id="change-log-search"
+                                type="search"
+                                class="form-control form-control-sm"
+                                placeholder="Поиск по журналу (поле, значения, пользователь)"
+                            >
+                        </div>
                     {% if change_logs %}
-                        <ul class="list-group list-group-flush">
+                        <ul id="change-log-list" class="list-group list-group-flush">
                             {% for log in change_logs %}
-                                <li class="list-group-item px-0">
+                                <li class="list-group-item px-0 change-log-item">
                                     <strong>{{ log.field_path }}</strong>:
                                     {{ log.old_value|default:"—" }} -> {{ log.new_value|default:"—" }}
                                     <span class="text-muted">({{ log.changed_at|date:"d.m.Y H:i" }}, {{ log.changed_by.username|default:"system" }})</span>
@@ -119,9 +137,11 @@
                     {% else %}
                         <p class="text-muted mb-0">Журнал пока пуст.</p>
                     {% endif %}
+                    </div>
                 </div>
             </div>
-        </div>
+            </div>
+        {% endif %}
     </div>
 
     <div class="modal fade" id="taskCreateModal" tabindex="-1" aria-hidden="true">
@@ -137,4 +157,19 @@
             </div>
         </div>
     </div>
+    <script>
+        (function () {
+            var input = document.getElementById('change-log-search');
+            var list = document.getElementById('change-log-list');
+            if (!input || !list) return;
+            var items = Array.prototype.slice.call(list.querySelectorAll('.change-log-item'));
+            input.addEventListener('input', function () {
+                var q = (input.value || '').toLowerCase().trim();
+                items.forEach(function (item) {
+                    var text = (item.textContent || '').toLowerCase();
+                    item.style.display = text.indexOf(q) >= 0 ? '' : 'none';
+                });
+            });
+        })();
+    </script>
 {% endblock %}

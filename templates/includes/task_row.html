@@ -1,5 +1,5 @@
-<li id="task-row-{{ task.id }}" class="list-group-item px-0 d-flex justify-content-between align-items-center">
-    <div class="d-flex align-items-center gap-2">
+<li id="task-row-{{ task.id }}" class="list-group-item px-0 d-flex justify-content-between align-items-start">
+    <div class="d-flex align-items-start gap-2">
         <form
             method="post"
             hx-post="{% url 'task_toggle' task.id %}?{% if show_deal %}show_deal=1&{% endif %}{% if compact %}compact=1{% endif %}"
@@ -16,11 +16,21 @@
             >
         </form>
         <div class="{% if task.is_done %}text-decoration-line-through text-muted{% endif %}">
-            <div>{{ task.title }}</div>
+            <div><strong>{{ task.title }}</strong></div>
+            {% if task.description %}
+                <div class="small">{{ task.description }}</div>
+            {% endif %}
+            <div class="small text-muted">
+                Дата постановки: {{ task.created_at|date:"d.m.Y" }} | Дата выполнения: {{ task.due_date|date:"d.m.Y" }}
+            </div>
+            {% if task.attachment or task.project_file %}
+                <div>
+                    <a href="{% url 'task_file_open' task.id %}" target="_blank" rel="noopener">Файл задачи</a>
+                </div>
+            {% endif %}
             {% if show_deal and task.deal %}
                 <small class="text-muted">{{ task.deal.project_code }}</small>
             {% endif %}
         </div>
     </div>
-    <small class="text-muted">{{ task.due_date|date:"d.m.Y" }}</small>
 </li>

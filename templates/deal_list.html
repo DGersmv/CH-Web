@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load humanize %}
 
 {% block content %}
     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -67,7 +68,9 @@
                     <th>Статус</th>
                     <th>Менеджер</th>
                     <th>Обновлено</th>
-                    <th>Сумма последней версии</th>
+                    {% if can_view_latest_total %}
+                        <th>Сумма последней версии</th>
+                    {% endif %}
                 </tr>
             </thead>
             <tbody>
@@ -81,17 +84,19 @@
                         </td>
                         <td>{{ deal.assigned_manager.username|default:"—" }}</td>
                         <td>{{ deal.updated_at|date:"d.m.Y H:i" }}</td>
-                        <td>
-                            {% if deal.latest_total %}
-                                {{ deal.latest_total|floatformat:2 }} ₽
-                            {% else %}
-                                —
-                            {% endif %}
-                        </td>
+                        {% if can_view_latest_total %}
+                            <td>
+                                {% if deal.latest_total %}
+                                    {{ deal.latest_total|floatformat:2|intcomma }} ₽
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                        {% endif %}
                     </tr>
                 {% empty %}
                     <tr>
-                        <td colspan="7" class="text-muted">Сделки пока отсутствуют.</td>
+                        <td colspan="{% if can_view_latest_total %}7{% else %}6{% endif %}" class="text-muted">Сделки пока отсутствуют.</td>
                     </tr>
                 {% endfor %}
             </tbody>

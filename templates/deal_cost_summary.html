@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="mb-0">Расчет по сделке {{ deal.project_code }}</h1>
+            <small class="text-muted">Draft v{{ draft_version.version_number }}</small>
+        </div>
+        <a href="{% url 'deal_detail' deal.id %}" class="btn btn-outline-secondary">Назад к сделке</a>
+    </div>
+
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Конфигуратор</span>
+            {% if save_success %}
+                <span class="badge text-bg-success">Сохранено</span>
+            {% endif %}
+        </div>
+        <div class="card-body">
+            {% if archicad_notice %}
+                <div class="alert alert-info py-2">{{ archicad_notice }}</div>
+            {% endif %}
+            <form method="post" class="row g-3">
+                {% csrf_token %}
+                {% for field in config_form %}
+                    <div class="col-md-4">
+                        <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                        {{ field }}
+                        {% if field.errors %}<div class="text-danger small">{{ field.errors|join:", " }}</div>{% endif %}
+                    </div>
+                {% endfor %}
+
+                <div class="col-12 d-flex gap-2 flex-wrap">
+                    <button type="submit" name="action" value="upload_archicad" class="btn btn-outline-secondary">Загрузить из Archicad</button>
+                    <button type="submit" name="action" value="recalc" class="btn btn-outline-primary">Пересчитать</button>
+                    <button type="submit" name="action" value="save" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+        <div class="card-footer bg-white">
+            {% include "includes/configurator_result.html" with calc_result=calc_result %}
+        </div>
+    </div>
+{% endblock %}

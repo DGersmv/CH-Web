@@ -1,5 +1,6 @@
 <form
     method="post"
+    enctype="multipart/form-data"
     hx-post="{% url 'deal_task_create' deal.id %}"
     hx-target="#deal-tasks-block"
     hx-swap="outerHTML"
@@ -10,6 +11,13 @@
         {{ form.title }}
         {% if form.title.errors %}
             <div class="text-danger small">{{ form.title.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="{{ form.description.id_for_label }}">Описание задачи</label>
+        {{ form.description }}
+        {% if form.description.errors %}
+            <div class="text-danger small">{{ form.description.errors|join:", " }}</div>
         {% endif %}
     </div>
     <div class="mb-3">
@@ -24,6 +32,20 @@
         {{ form.assignee }}
         {% if form.assignee.errors %}
             <div class="text-danger small">{{ form.assignee.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="{{ form.attachment.id_for_label }}">Файл</label>
+        {{ form.attachment }}
+        {% if form.attachment.errors %}
+            <div class="text-danger small">{{ form.attachment.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="{{ form.project_file.id_for_label }}">Или выбрать файл из сделки</label>
+        {{ form.project_file }}
+        {% if form.project_file.errors %}
+            <div class="text-danger small">{{ form.project_file.errors|join:", " }}</div>
         {% endif %}
     </div>
     {% if form.non_field_errors %}

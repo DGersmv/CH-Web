@@ -228,7 +228,7 @@ class DashboardLeadForm(forms.Form):
 
 class DealFileUploadForm(forms.Form):
     source = forms.ChoiceField(
-        choices=(('client', 'От заказчика'), ('designer', 'От проектировщика')),
+        choices=(('client', 'От заказчика'), ('designer', 'От проектировщика'), ('sales', 'От отдела продаж')),
         widget=forms.HiddenInput(),
     )
     upload = forms.FileField(

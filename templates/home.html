@@ -4,14 +4,16 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="mb-0">Dashboard</h1>
         <div class="d-flex align-items-center gap-2">
-            <button
-                type="button"
-                class="btn btn-primary"
-                data-bs-toggle="modal"
-                data-bs-target="#newLeadModal"
-            >
-                Новый лид
-            </button>
+            {% if user.role != 'designer' and user.role != 'production' %}
+                <button
+                    type="button"
+                    class="btn btn-primary"
+                    data-bs-toggle="modal"
+                    data-bs-target="#newLeadModal"
+                >
+                    Новый лид
+                </button>
+            {% endif %}
             <span class="text-muted">Пользователь: {{ user.username }}</span>
         </div>
     </div>
@@ -37,6 +39,25 @@
         </div>
     {% endif %}
 
+    {% if is_leadership %}
+        <div class="mb-4">
+            {% include "includes/dashboard_employees_block.html" with employees=employees employee_create_form=employee_create_form %}
+        </div>
+    {% endif %}
+
+    <div class="mb-4">
+        {% include "includes/dashboard_messages_block.html" %}
+    </div>
+
+    {% if user.role == 'designer' or user.role == 'production' %}
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title mb-2">Режим проектных файлов</h5>
+                <p class="text-muted mb-3">Для вашей роли доступна работа только с файлами проектов. Откройте нужную сделку в разделе «Сделки».</p>
+                <a href="{% url 'deals' %}" class="btn btn-primary btn-sm">К списку сделок</a>
+            </div>
+        </div>
+    {% else %}
     <div class="row g-4">
         <div class="col-lg-7">
             <div class="card h-100">
@@ -148,30 +169,33 @@
             </div>
         </div>
     </div>
+    {% endif %}
 
-    <div class="modal fade" id="newLeadModal" tabindex="-1" aria-labelledby="newLeadModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <form
-                    method="post"
-                    hx-post="{% url 'dashboard_lead_create' %}"
-                    hx-target="#new-lead-modal-body"
-                    hx-swap="innerHTML"
-                >
-                    {% csrf_token %}
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="newLeadModalLabel">Новый лид</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body" id="new-lead-modal-body">
-                        {% include "includes/dashboard_lead_modal_body.html" with lead_form=lead_form %}
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
-                        <button type="submit" class="btn btn-primary">Создать лид</button>
-                    </div>
-                </form>
+    {% if user.role != 'designer' and user.role != 'production' %}
+        <div class="modal fade" id="newLeadModal" tabindex="-1" aria-labelledby="newLeadModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <form
+                        method="post"
+                        hx-post="{% url 'dashboard_lead_create' %}"
+                        hx-target="#new-lead-modal-body"
+                        hx-swap="innerHTML"
+                    >
+                        {% csrf_token %}
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="newLeadModalLabel">Новый лид</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body" id="new-lead-modal-body">
+                            {% include "includes/dashboard_lead_modal_body.html" with lead_form=lead_form %}
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+                            <button type="submit" class="btn btn-primary">Создать лид</button>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
-    </div>
+    {% endif %}
 {% endblock %}

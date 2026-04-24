@@ -2,7 +2,7 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
-from deals.models import Deal
+from deals.models import Deal, ProjectFile
 
 
 class Task(models.Model):
@@ -21,6 +21,15 @@ class Task(models.Model):
         related_name='tasks',
     )
     title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default='')
+    attachment = models.FileField(upload_to='task_attachments/', null=True, blank=True)
+    project_file = models.ForeignKey(
+        ProjectFile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='tasks',
+    )
     due_date = models.DateField()
     is_done = models.BooleanField(default=False)
     completed_at = models.DateTimeField(null=True, blank=True)

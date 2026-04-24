@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     container_name: chcrm_db
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -11,10 +12,18 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    container_name: chcrm_redis
+    ports:
+      - "6379:6379"
+
   app:
     build:
       context: .
       dockerfile: Dockerfile
+    restart: unless-stopped
     container_name: chcrm_app
     working_dir: /app
     env_file:
@@ -22,6 +31,7 @@ services:
     environment:
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - .:/app
@@ -29,6 +39,7 @@ services:
       - "8001:8000"
     depends_on:
       - db
+      - redis
 
 volumes:
   postgres_data:

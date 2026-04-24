@@ -6,13 +6,14 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.http import FileResponse, Http404, HttpResponse, HttpResponseBadRequest
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.generic.edit import FormView
 from django.utils import timezone
 
+from accounts.permissions import can_access_file_source, is_file_only_role
 from clients.models import Client
 
 from .forms import DashboardLeadForm, DealConfiguratorForm, DealCreateForm, DealFileUploadForm
@@ -24,6 +25,8 @@ from .services.calculation_engine import CALC_SCHEMA_VERSION, calculate_config
 @login_required
 @require_POST
 def update_deal_status(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
     deal = get_object_or_404(Deal, pk=deal_id)
     new_status = request.POST.get('status', '').strip()
     valid_statuses = {value for value, _ in Deal.Status.choices}
@@ -64,6 +67,8 @@ def _ensure_latest_version_for_log(deal, user):
 @login_required
 @require_POST
 def update_deal_manager(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
     deal = get_object_or_404(Deal, pk=deal_id)
     manager_id = request.POST.get('assigned_manager', '').strip()
     manager = None
@@ -98,6 +103,8 @@ def update_deal_manager(request, deal_id):
 @login_required
 @require_POST
 def update_deal_margin(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
     deal = get_object_or_404(Deal, pk=deal_id)
     raw_margin = request.POST.get('margin_percent', '').strip().replace(',', '.')
     try:
@@ -138,6 +145,8 @@ class DealCreateView(LoginRequiredMixin, FormView):
 @login_required
 @require_POST
 def create_dashboard_lead(request):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
     form = DashboardLeadForm(request.POST)
     if not form.is_valid():
         return render(request, 'includes/dashboard_lead_modal_body.html', {'lead_form': form}, status=400)
@@ -195,6 +204,8 @@ def create_dashboard_lead(request):
 @login_required
 @require_POST
 def update_deal_module_count(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
     deal = get_object_or_404(Deal, pk=deal_id)
     raw = request.POST.get('module_count', '').strip()
     if not raw.isdigit():
@@ -257,6 +268,10 @@ def _source_dir_by_category(source: str, category: str) -> Path:
         if category == ProjectFile.Category.DWG:
             return Path('incoming/designer/dwg')
         return Path('incoming/designer/reference')
+    if source == ProjectFile.Source.SALES:
+        if category == ProjectFile.Category.PHOTO:
+            return Path('incoming/sales/photos')
+        return Path('incoming/sales/docs')
     return Path('system')
 
 
@@ -270,13 +285,21 @@ def _files_summary(deal, source: str):
     }
 
 
-def _files_context(deal, **extra):
+def _files_context(deal, viewer=None, **extra):
+    can_client = can_access_file_source(viewer, ProjectFile.Source.CLIENT) if viewer else True
+    can_designer = can_access_file_source(viewer, ProjectFile.Source.DESIGNER) if viewer else True
+    can_sales = can_access_file_source(viewer, ProjectFile.Source.SALES) if viewer else True
     context = {
         'deal': deal,
-        'client_files': _files_summary(deal, ProjectFile.Source.CLIENT),
-        'designer_files': _files_summary(deal, ProjectFile.Source.DESIGNER),
-        'client_upload_form': DealFileUploadForm(initial={'source': ProjectFile.Source.CLIENT}),
-        'designer_upload_form': DealFileUploadForm(initial={'source': ProjectFile.Source.DESIGNER}),
+        'can_view_client_files': can_client,
+        'can_view_designer_files': can_designer,
+        'can_view_sales_files': can_sales,
+        'client_files': _files_summary(deal, ProjectFile.Source.CLIENT) if can_client else {'items': [], 'latest': None, 'count': 0},
+        'designer_files': _files_summary(deal, ProjectFile.Source.DESIGNER) if can_designer else {'items': [], 'latest': None, 'count': 0},
+        'sales_files': _files_summary(deal, ProjectFile.Source.SALES) if can_sales else {'items': [], 'latest': None, 'count': 0},
+        'client_upload_form': DealFileUploadForm(initial={'source': ProjectFile.Source.CLIENT}) if can_client else None,
+        'designer_upload_form': DealFileUploadForm(initial={'source': ProjectFile.Source.DESIGNER}) if can_designer else None,
+        'sales_upload_form': DealFileUploadForm(initial={'source': ProjectFile.Source.SALES}) if can_sales else None,
     }
     context.update(extra)
     return context
@@ -298,6 +321,30 @@ def _archive_file(file_obj, user):
     file_obj.save(update_fields=['relative_path', 'is_archived', 'archived_at', 'archived_by', 'updated_at'])
 
 
+def _log_file_event(deal, user, action: str, file_obj=None, extra=None):
+    payload = {
+        'action': action,
+    }
+    if file_obj is not None:
+        payload.update(
+            {
+                'file_id': file_obj.id,
+                'file_name': file_obj.original_name,
+                'source': file_obj.source,
+                'category': file_obj.category,
+            }
+        )
+    if extra:
+        payload.update(extra)
+    ChangeLog.objects.create(
+        project_version=_ensure_latest_version_for_log(deal, user),
+        changed_by=user,
+        field_path='files.event',
+        old_value=None,
+        new_value=_json_ready(payload),
+    )
+
+
 @login_required
 @require_POST
 def upload_project_file(request, deal_id):
@@ -307,11 +354,13 @@ def upload_project_file(request, deal_id):
         return render(
             request,
             'includes/deal_files_block.html',
-            _files_context(deal, files_error='Не удалось загрузить файл.'),
+            _files_context(deal, viewer=request.user, files_error='Не удалось загрузить файл.'),
             status=400,
         )
 
     source = form.cleaned_data['source']
+    if not can_access_file_source(request.user, source):
+        return HttpResponseForbidden('Not allowed')
     uploaded = form.cleaned_data['upload']
     ensure_deal_dirs(deal)
     category = _detect_category(uploaded.name)
@@ -327,7 +376,8 @@ def upload_project_file(request, deal_id):
         for chunk in uploaded.chunks():
             destination.write(chunk)
 
-    ProjectFile.objects.create(
+    created_file = ProjectFile.objects.create(
+        # Record upload in change history.
         deal=deal,
         source=source,
         category=category,
@@ -338,10 +388,11 @@ def upload_project_file(request, deal_id):
         ext=ext,
         uploaded_by=request.user,
     )
+    _log_file_event(deal, request.user, 'upload', created_file, {'size_bytes': uploaded.size})
     return render(
         request,
         'includes/deal_files_block.html',
-        _files_context(deal, files_notice='Файл загружен.'),
+        _files_context(deal, viewer=request.user, files_notice='Файл загружен.'),
     )
 
 
@@ -349,9 +400,13 @@ def upload_project_file(request, deal_id):
 @xframe_options_sameorigin
 def open_project_file(request, file_id):
     file_obj = get_object_or_404(ProjectFile, pk=file_id, is_archived=False)
+    if not can_access_file_source(request.user, file_obj.source):
+        return HttpResponseForbidden('Not allowed')
     absolute_path = file_obj.absolute_path
     if not absolute_path.exists() or not absolute_path.is_file():
         raise Http404('File not found')
+    if request.GET.get('log', '1') != '0':
+        _log_file_event(file_obj.deal, request.user, 'download', file_obj)
     return FileResponse(absolute_path.open('rb'), as_attachment=False, filename=file_obj.original_name)
 
 
@@ -359,14 +414,24 @@ def open_project_file(request, file_id):
 @require_POST
 def archive_project_file(request, file_id):
     file_obj = get_object_or_404(ProjectFile, pk=file_id, is_archived=False)
+    if not can_access_file_source(request.user, file_obj.source):
+        return HttpResponseForbidden('Not allowed')
     deal = file_obj.deal
     source = file_obj.source
+    file_name = file_obj.original_name
     _archive_file(file_obj, request.user)
+    _log_file_event(
+        deal,
+        request.user,
+        'archive',
+        None,
+        {'file_id': file_id, 'file_name': file_name, 'source': source},
+    )
 
     return render(
         request,
         'includes/deal_files_block.html',
-        _files_context(deal, files_notice='Файл перемещён в архив.', focus_source=source),
+        _files_context(deal, viewer=request.user, files_notice='Файл перемещён в архив.', focus_source=source),
     )
 
 
@@ -374,14 +439,16 @@ def archive_project_file(request, file_id):
 @require_POST
 def bulk_project_file_action(request, deal_id, source):
     deal = get_object_or_404(Deal, pk=deal_id)
-    if source not in {ProjectFile.Source.CLIENT, ProjectFile.Source.DESIGNER}:
+    if source not in {ProjectFile.Source.CLIENT, ProjectFile.Source.DESIGNER, ProjectFile.Source.SALES}:
         return HttpResponseBadRequest('Invalid source')
+    if not can_access_file_source(request.user, source):
+        return HttpResponseForbidden('Not allowed')
     selected_ids = [int(v) for v in request.POST.getlist('selected_ids') if v.isdigit()]
     if not selected_ids:
         return render(
             request,
             'includes/deal_files_block.html',
-            _files_context(deal, files_error='Выберите хотя бы один файл.'),
+            _files_context(deal, viewer=request.user, files_error='Выберите хотя бы один файл.'),
             status=400,
         )
 
@@ -396,12 +463,22 @@ def bulk_project_file_action(request, deal_id, source):
     if action == 'archive':
         count = 0
         for file_obj in files_qs:
+            file_id = file_obj.id
+            file_name = file_obj.original_name
+            file_source = file_obj.source
             _archive_file(file_obj, request.user)
+            _log_file_event(
+                deal,
+                request.user,
+                'archive',
+                None,
+                {'file_id': file_id, 'file_name': file_name, 'source': file_source, 'bulk': True},
+            )
             count += 1
         return render(
             request,
             'includes/deal_files_block.html',
-            _files_context(deal, files_notice=f'В архив перемещено: {count}.'),
+            _files_context(deal, viewer=request.user, files_notice=f'В архив перемещено: {count}.'),
         )
 
     if action == 'preview':
@@ -410,18 +487,28 @@ def bulk_project_file_action(request, deal_id, source):
             return render(
                 request,
                 'includes/deal_files_block.html',
-                _files_context(deal, files_error='Файлы не найдены.'),
+                _files_context(deal, viewer=request.user, files_error='Файлы не найдены.'),
                 status=404,
             )
+        _log_file_event(deal, request.user, 'preview', first, {'bulk': True})
         return open_project_file(request, first.id)
 
     if action == 'download':
+        downloaded_ids = []
         memory_file = io.BytesIO()
         with zipfile.ZipFile(memory_file, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
             for file_obj in files_qs:
                 path = file_obj.absolute_path
                 if path.exists() and path.is_file():
                     zf.write(path, arcname=file_obj.original_name)
+                    downloaded_ids.append(file_obj.id)
+        _log_file_event(
+            deal,
+            request.user,
+            'download_zip',
+            None,
+            {'bulk': True, 'source': source, 'file_ids': downloaded_ids, 'count': len(downloaded_ids)},
+        )
         memory_file.seek(0)
         response = HttpResponse(memory_file.read(), content_type='application/zip')
         response['Content-Disposition'] = f'attachment; filename=deal-{deal.id}-{source}-files.zip'
@@ -495,6 +582,8 @@ def _parse_decimal(raw_value):
 @login_required
 @require_POST
 def update_deal_cost_summary(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
     deal = get_object_or_404(Deal, pk=deal_id)
     draft = _get_or_create_draft_version(deal, request.user)
     frozen = draft.frozen_data or {}
@@ -503,10 +592,12 @@ def update_deal_cost_summary(request, deal_id):
 
     materials_total = _parse_decimal(request.POST.get('materials_total'))
     work_total = _parse_decimal(request.POST.get('work_total'))
-    subtotal = _parse_decimal(request.POST.get('subtotal'))
-    with_margin = _parse_decimal(request.POST.get('with_margin'))
-    if None in {materials_total, work_total, subtotal, with_margin}:
+    if None in {materials_total, work_total}:
         return HttpResponseBadRequest('Invalid totals payload')
+
+    subtotal = (materials_total + work_total).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    margin_multiplier = Decimal('1.00') + (Decimal(str(deal.margin_percent)) / Decimal('100.00'))
+    with_margin = (subtotal * margin_multiplier).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
     old_totals = {
         'material_total': totals.get('material_total'),
@@ -543,14 +634,82 @@ def update_deal_cost_summary(request, deal_id):
         ),
     )
 
-    response = HttpResponse('')
-    response['HX-Redirect'] = redirect('deal_detail', pk=deal.pk).url
-    return response
+    target_url = redirect('deal_detail', pk=deal.pk).url
+    if request.headers.get('HX-Request') == 'true':
+        response = HttpResponse('')
+        response['HX-Redirect'] = target_url
+        return response
+    return redirect(target_url)
+
+
+@login_required
+def cost_summary_page(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    draft, initial = _draft_config_initial(deal, request.user)
+    frozen = draft.frozen_data or {}
+    save_success = False
+    archicad_notice = ''
+
+    if request.method == 'POST':
+        action = request.POST.get('action', '').strip()
+        if action == 'upload_archicad':
+            config_form = DealConfiguratorForm(initial=initial)
+            calc_result = frozen.get('calculation') or calculate_config(config_form.initial, margin_percent=deal.margin_percent)
+            archicad_notice = 'Кнопка-заглушка: интеграция Archicad будет добавлена следующим шагом.'
+        else:
+            config_form = DealConfiguratorForm(request.POST)
+            calc_result = None
+            if config_form.is_valid():
+                calc_result = calculate_config(config_form.cleaned_data, margin_percent=deal.margin_percent)
+                if action == 'save':
+                    old_inputs = (draft.frozen_data or {}).get('config_inputs', {})
+                    new_inputs = config_form.cleaned_data
+                    changed_keys = [key for key in new_inputs.keys() if str(old_inputs.get(key, '')) != str(new_inputs.get(key, ''))]
+                    draft.frozen_data = {
+                        'calc_schema_version': CALC_SCHEMA_VERSION,
+                        'config_inputs': _json_ready(new_inputs),
+                        'calculation': _json_ready(calc_result),
+                        'saved_at': timezone.now().isoformat(),
+                    }
+                    draft.save(update_fields=['frozen_data'])
+                    for key in changed_keys:
+                        ChangeLog.objects.create(
+                            project_version=draft,
+                            changed_by=request.user,
+                            field_path=f'config.{key}',
+                            old_value={'value': _json_ready(old_inputs.get(key))},
+                            new_value={'value': _json_ready(new_inputs.get(key))},
+                        )
+                    save_success = True
+            else:
+                calc_result = None
+    else:
+        config_form = DealConfiguratorForm(initial=initial)
+        calc_result = frozen.get('calculation')
+        if calc_result is None:
+            calc_result = calculate_config(config_form.initial, margin_percent=deal.margin_percent)
+
+    return render(
+        request,
+        'deal_cost_summary.html',
+        {
+            'deal': deal,
+            'draft_version': draft,
+            'config_form': config_form,
+            'calc_result': calc_result,
+            'save_success': save_success,
+            'archicad_notice': archicad_notice,
+        },
+    )
 
 
 @login_required
 @require_POST
 def recalc_configurator(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
     deal = get_object_or_404(Deal, pk=deal_id)
     form = DealConfiguratorForm(request.POST)
     calc_result = None
@@ -573,6 +732,8 @@ def recalc_configurator(request, deal_id):
 @login_required
 @require_POST
 def save_configurator_draft(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
     deal = get_object_or_404(Deal, pk=deal_id)
     form = DealConfiguratorForm(request.POST)
     if not form.is_valid():

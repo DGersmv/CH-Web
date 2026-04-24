@@ -1,0 +1,76 @@
+<div id="dashboard-messages-block" class="card">
+    <div class="card-header">Сообщения</div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-lg-4">
+                <div class="list-group">
+                    {% for dialog in dialogs %}
+                        <a
+                            href="{% url 'home' %}?dialog_with={{ dialog.user.id }}"
+                            class="list-group-item list-group-item-action {% if dialog_user and dialog_user.id == dialog.user.id %}active{% endif %}"
+                        >
+                            <div class="d-flex w-100 justify-content-between">
+                                <strong>{{ dialog.display_name }}</strong>
+                                <small>{{ dialog.last_created_at|date:"d.m H:i" }}</small>
+                            </div>
+                            <div class="small text-truncate">{{ dialog.last_message|default:"(файл)" }}</div>
+                            {% if dialog.unread_count %}
+                                <span class="badge text-bg-danger mt-1">{{ dialog.unread_count }}</span>
+                            {% endif %}
+                        </a>
+                    {% empty %}
+                        <div class="text-muted small">Пока нет диалогов.</div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="col-lg-8">
+                {% if dialog_user %}
+                    <div class="border rounded p-2 mb-3" style="max-height: 320px; overflow-y: auto;">
+                        {% for msg in dialog_messages %}
+                            <div class="mb-2 d-flex {% if msg.sender_id == user.id %}justify-content-end{% endif %}">
+                                <div class="p-2 rounded {% if msg.sender_id == user.id %}bg-primary text-white{% else %}bg-light{% endif %}" style="max-width: 80%;">
+                                    {% if msg.body %}
+                                        <div>{{ msg.body }}</div>
+                                    {% endif %}
+                                    {% if msg.attachment %}
+                                        <div class="small">
+                                            <a
+                                                href="{{ msg.attachment.url }}"
+                                                target="_blank"
+                                                rel="noopener"
+                                                class="{% if msg.sender_id == user.id %}text-white{% endif %}"
+                                            >
+                                                Файл: {{ msg.attachment.name|cut:"direct_messages/" }}
+                                            </a>
+                                        </div>
+                                    {% endif %}
+                                    <div class="small {% if msg.sender_id == user.id %}text-white-50{% else %}text-muted{% endif %}">
+                                        {{ msg.created_at|date:"d.m.Y H:i" }}
+                                    </div>
+                                </div>
+                            </div>
+                        {% empty %}
+                            <p class="text-muted mb-0">Сообщений в диалоге пока нет.</p>
+                        {% endfor %}
+                    </div>
+
+                    <form method="post" action="{% url 'dashboard_message_send' %}" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <input type="hidden" name="recipient" value="{{ dialog_user.id }}">
+                        <div class="mb-2">
+                            {{ message_form.body }}
+                        </div>
+                        <div class="mb-2">
+                            {{ message_form.attachment }}
+                        </div>
+                        <div class="d-flex justify-content-end">
+                            <button type="submit" class="btn btn-primary btn-sm">Отправить</button>
+                        </div>
+                    </form>
+                {% else %}
+                    <p class="text-muted mb-0">Выберите пользователя, чтобы открыть диалог.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>

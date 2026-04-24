@@ -1,13 +1,50 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block content %}
-    <h1>Вход</h1>
-    {% if form.errors %}
-        <p>Неверный логин или пароль.</p>
-    {% endif %}
-    <form method="post">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit">Войти</button>
-    </form>
+    <div class="d-flex align-items-center justify-content-center" style="min-height: calc(100vh - 120px);">
+        <div class="card shadow-sm" style="width: 100%; max-width: 430px;">
+            <div class="card-body p-4">
+                <div class="text-center mb-3">
+                    <img
+                        src="{% static 'img/logo.jpg' %}"
+                        alt="Логотип компании"
+                        style="max-height: 80px; width: auto;"
+                    >
+                </div>
+                <h1 class="h4 text-center mb-4">Вход</h1>
+                {% if form.errors %}
+                    <div class="alert alert-danger py-2" role="alert">
+                        Неверный логин или пароль.
+                    </div>
+                {% endif %}
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label" for="{{ form.username.id_for_label }}">Логин</label>
+                        <input
+                            type="text"
+                            name="{{ form.username.html_name }}"
+                            id="{{ form.username.id_for_label }}"
+                            class="form-control"
+                            value="{{ form.username.value|default_if_none:'' }}"
+                            required
+                            autofocus
+                        >
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="{{ form.password.id_for_label }}">Пароль</label>
+                        <input
+                            type="password"
+                            name="{{ form.password.html_name }}"
+                            id="{{ form.password.id_for_label }}"
+                            class="form-control"
+                            required
+                        >
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Войти</button>
+                </form>
+            </div>
+        </div>
+    </div>
 {% endblock %}

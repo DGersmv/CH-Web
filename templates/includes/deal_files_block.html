@@ -8,7 +8,8 @@
             <div class="alert alert-success py-2">{{ files_notice }}</div>
         {% endif %}
         <div class="row g-3">
-            <div class="col-lg-6">
+            {% if can_view_client_files %}
+            <div class="col-lg-4">
                 <div class="border rounded p-2 h-100">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h6 class="mb-0">Файлы от заказчика</h6>
@@ -24,9 +25,9 @@
                     <div class="mb-2 border rounded p-2 bg-light-subtle" style="min-height: 90px;">
                         {% if client_files.latest %}
                             {% if client_files.latest.category == 'photo' %}
-                                <img src="{% url 'deal_file_open' client_files.latest.id %}" alt="thumbnail" style="max-height: 70px; max-width: 100%; object-fit: contain;">
+                                <img src="{% url 'deal_file_open' client_files.latest.id %}?log=0" alt="thumbnail" style="max-height: 70px; max-width: 100%; object-fit: contain;">
                             {% elif client_files.latest.category == 'pdf' %}
-                                <iframe src="{% url 'deal_file_open' client_files.latest.id %}#page=1" title="pdf thumbnail" style="width: 100%; height: 70px; border: 0;"></iframe>
+                                <iframe src="{% url 'deal_file_open' client_files.latest.id %}?log=0#page=1" title="pdf thumbnail" style="width: 100%; height: 70px; border: 0;"></iframe>
                             {% else %}
                                 <div class="d-flex h-100 align-items-center justify-content-center text-muted">Миниатюра недоступна</div>
                             {% endif %}
@@ -97,7 +98,9 @@
                     </div>
                 </div>
             </div>
-            <div class="col-lg-6">
+            {% endif %}
+            {% if can_view_designer_files %}
+            <div class="col-lg-4">
                 <div class="border rounded p-2 h-100">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h6 class="mb-0">Файлы от проектировщика</h6>
@@ -113,9 +116,9 @@
                     <div class="mb-2 border rounded p-2 bg-light-subtle" style="min-height: 90px;">
                         {% if designer_files.latest %}
                             {% if designer_files.latest.category == 'photo' %}
-                                <img src="{% url 'deal_file_open' designer_files.latest.id %}" alt="thumbnail" style="max-height: 70px; max-width: 100%; object-fit: contain;">
+                                <img src="{% url 'deal_file_open' designer_files.latest.id %}?log=0" alt="thumbnail" style="max-height: 70px; max-width: 100%; object-fit: contain;">
                             {% elif designer_files.latest.category == 'pdf' %}
-                                <iframe src="{% url 'deal_file_open' designer_files.latest.id %}#page=1" title="pdf thumbnail" style="width: 100%; height: 70px; border: 0;"></iframe>
+                                <iframe src="{% url 'deal_file_open' designer_files.latest.id %}?log=0#page=1" title="pdf thumbnail" style="width: 100%; height: 70px; border: 0;"></iframe>
                             {% else %}
                                 <div class="d-flex h-100 align-items-center justify-content-center text-muted">Миниатюра недоступна</div>
                             {% endif %}
@@ -186,6 +189,98 @@
                     </div>
                 </div>
             </div>
+            {% endif %}
+            {% if can_view_sales_files %}
+            <div class="col-lg-4">
+                <div class="border rounded p-2 h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">Файлы от отдела продаж</h6>
+                        <span class="badge text-bg-light">{{ sales_files.count }}</span>
+                    </div>
+                    <div class="small text-muted mb-2">
+                        {% if sales_files.latest %}
+                            Последнее изменение: {{ sales_files.latest.updated_at|date:"d.m.Y H:i" }}
+                        {% else %}
+                            Пока нет файлов
+                        {% endif %}
+                    </div>
+                    <div class="mb-2 border rounded p-2 bg-light-subtle" style="min-height: 90px;">
+                        {% if sales_files.latest %}
+                            {% if sales_files.latest.category == 'photo' %}
+                                <img src="{% url 'deal_file_open' sales_files.latest.id %}?log=0" alt="thumbnail" style="max-height: 70px; max-width: 100%; object-fit: contain;">
+                            {% elif sales_files.latest.category == 'pdf' %}
+                                <iframe src="{% url 'deal_file_open' sales_files.latest.id %}?log=0#page=1" title="pdf thumbnail" style="width: 100%; height: 70px; border: 0;"></iframe>
+                            {% else %}
+                                <div class="d-flex h-100 align-items-center justify-content-center text-muted">Миниатюра недоступна</div>
+                            {% endif %}
+                        {% else %}
+                            <div class="d-flex h-100 align-items-center justify-content-center text-muted">Нет файла для миниатюры</div>
+                        {% endif %}
+                    </div>
+                    {% if sales_files.latest %}
+                        <div class="small mb-2"><strong>{{ sales_files.latest.original_name }}</strong></div>
+                    {% endif %}
+                    <form
+                        id="upload-form-sales"
+                        method="post"
+                        enctype="multipart/form-data"
+                        hx-post="{% url 'deal_file_upload' deal.id %}"
+                        hx-target="#deal-files-block"
+                        hx-swap="outerHTML"
+                        class="d-none"
+                    >
+                        {% csrf_token %}
+                        {{ sales_upload_form.source }}
+                        {{ sales_upload_form.upload }}
+                    </form>
+                    <div class="d-flex gap-2 mb-2">
+                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#sales-files-list">Список файлов</button>
+                        <button class="btn btn-sm btn-primary" type="button" data-upload-trigger="sales">Загрузить</button>
+                    </div>
+                    <div class="collapse" id="sales-files-list">
+                        <div class="border rounded p-2">
+                            <div class="d-flex gap-2 mb-2">
+                                <input type="search" class="form-control form-control-sm" placeholder="Поиск по имени" data-file-search="sales">
+                                <select class="form-select form-select-sm" data-file-sort="sales">
+                                    <option value="updated_desc">Сорт: дата изменения ↓</option>
+                                    <option value="updated_asc">Сорт: дата изменения ↑</option>
+                                    <option value="name_asc">Сорт: имя А-Я</option>
+                                    <option value="name_desc">Сорт: имя Я-А</option>
+                                    <option value="created_desc">Сорт: дата добавления ↓</option>
+                                    <option value="created_asc">Сорт: дата добавления ↑</option>
+                                </select>
+                            </div>
+                            <form method="post" action="{% url 'deal_file_bulk_action' deal.id 'sales' %}" class="mb-2" target="_blank">
+                                {% csrf_token %}
+                                <div class="btn-group btn-group-sm">
+                                    <button type="submit" name="action" value="download" class="btn btn-outline-primary">Скачать</button>
+                                    <button type="submit" name="action" value="preview" class="btn btn-outline-secondary">Просмотреть</button>
+                                    <button type="submit" name="action" value="archive" class="btn btn-outline-danger" formaction="{% url 'deal_file_bulk_action' deal.id 'sales' %}" hx-post="{% url 'deal_file_bulk_action' deal.id 'sales' %}" hx-target="#deal-files-block" hx-swap="outerHTML">Удалить</button>
+                                </div>
+                                <ul class="list-group list-group-flush mt-2" data-file-list="sales">
+                                    {% for file in sales_files.items %}
+                                        <li class="list-group-item px-0" data-name="{{ file.original_name|lower }}" data-created="{{ file.created_at|date:'U' }}" data-updated="{{ file.updated_at|date:'U' }}">
+                                            <div class="d-flex justify-content-between gap-2">
+                                                <label class="d-flex align-items-start gap-2 mb-0">
+                                                    <input type="checkbox" name="selected_ids" value="{{ file.id }}" class="form-check-input mt-1">
+                                                    <span>
+                                                        <span class="fw-semibold">{{ file.original_name }}</span><br>
+                                                        <small class="text-muted">Добавлен: {{ file.created_at|date:"d.m.Y H:i" }} | Изменен: {{ file.updated_at|date:"d.m.Y H:i" }}</small>
+                                                    </span>
+                                                </label>
+                                                <a class="btn btn-sm btn-outline-secondary" href="{% url 'deal_file_open' file.id %}" target="_blank">Открыть</a>
+                                            </div>
+                                        </li>
+                                    {% empty %}
+                                        <li class="list-group-item px-0 text-muted">Файлов пока нет.</li>
+                                    {% endfor %}
+                                </ul>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -236,7 +331,9 @@
         }
         wireUpload('client');
         wireUpload('designer');
+        wireUpload('sales');
         wireFilter('client');
         wireFilter('designer');
+        wireFilter('sales');
     })();
 </script>
