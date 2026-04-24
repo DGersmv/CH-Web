@@ -136,6 +136,13 @@ class DealConfiguratorForm(forms.Form):
 
 
 class DashboardLeadForm(forms.Form):
+    module_count = forms.IntegerField(
+        label='Количество модулей',
+        min_value=0,
+        max_value=15,
+        initial=0,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'max': 15}),
+    )
     last_name = forms.CharField(
         label='Фамилия',
         max_length=100,
@@ -217,3 +224,14 @@ class DashboardLeadForm(forms.Form):
         if not value.startswith('+7'):
             raise forms.ValidationError('Номер должен начинаться с +7.')
         return value
+
+
+class DealFileUploadForm(forms.Form):
+    source = forms.ChoiceField(
+        choices=(('client', 'От заказчика'), ('designer', 'От проектировщика')),
+        widget=forms.HiddenInput(),
+    )
+    upload = forms.FileField(
+        label='Файл',
+        widget=forms.ClearableFileInput(attrs={'class': 'form-control form-control-sm'}),
+    )

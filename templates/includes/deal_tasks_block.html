@@ -1,5 +1,5 @@
 <div class="card h-100" id="deal-tasks-block">
-    <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center">
         <span>Задачи по сделке</span>
         <button
             type="button"
@@ -13,7 +13,7 @@
             + Задача
         </button>
     </div>
-    <div class="card-body">
+    <div class="card-body py-2">
         {% if tasks_for_deal %}
             <ul class="list-group list-group-flush">
                 {% for task in tasks_for_deal %}

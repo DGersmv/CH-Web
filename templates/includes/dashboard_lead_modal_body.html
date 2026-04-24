@@ -1,5 +1,12 @@
 <div class="row g-3">
     <div class="col-md-4">
+        <label class="form-label" for="{{ lead_form.module_count.id_for_label }}">{{ lead_form.module_count.label }}</label>
+        {{ lead_form.module_count }}
+        {% if lead_form.module_count.errors %}
+            <div class="text-danger small">{{ lead_form.module_count.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+    <div class="col-md-4">
         <label class="form-label" for="{{ lead_form.last_name.id_for_label }}">{{ lead_form.last_name.label }}</label>
         {{ lead_form.last_name }}
         {% if lead_form.last_name.errors %}

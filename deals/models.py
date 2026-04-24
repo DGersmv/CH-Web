@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -76,12 +77,16 @@ class Deal(models.Model):
     def create_new_version(self, source='manual', created_by=None):
         last_version = self.versions.order_by('-version_number').first()
         next_number = 1 if last_version is None else last_version.version_number + 1
-        return ProjectVersion.objects.create(
+        version = ProjectVersion.objects.create(
             deal=self,
             version_number=next_number,
             source=source,
             created_by=created_by,
         )
+        from .services.storage_paths import ensure_version_dirs
+
+        ensure_version_dirs(version)
+        return version
 
 
 class ProjectVersion(models.Model):
@@ -148,3 +153,65 @@ class ChangeLog(models.Model):
 
     def __str__(self):
         return f'{self.project_version} | {self.field_path}'
+
+
+class ProjectFile(models.Model):
+    class Source(models.TextChoices):
+        CLIENT = 'client', 'Client'
+        DESIGNER = 'designer', 'Designer'
+        SYSTEM = 'system', 'System'
+
+    class Category(models.TextChoices):
+        PHOTO = 'photo', 'Photo'
+        PDF = 'pdf', 'PDF'
+        DWG = 'dwg', 'DWG'
+        OTHER = 'other', 'Other'
+
+    deal = models.ForeignKey(Deal, on_delete=models.CASCADE, related_name='project_files')
+    project_version = models.ForeignKey(
+        ProjectVersion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='project_files',
+    )
+    source = models.CharField(max_length=20, choices=Source.choices)
+    category = models.CharField(max_length=20, choices=Category.choices, default=Category.OTHER)
+    relative_path = models.CharField(max_length=500)
+    original_name = models.CharField(max_length=255)
+    size_bytes = models.PositiveBigIntegerField(default=0)
+    mime_type = models.CharField(max_length=150, blank=True)
+    ext = models.CharField(max_length=20, blank=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='uploaded_project_files',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_archived = models.BooleanField(default=False)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    archived_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='archived_project_files',
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['deal', 'source', 'is_archived', '-updated_at'], name='project_file_list_idx'),
+        ]
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return self.original_name
+
+    @property
+    def absolute_path(self) -> Path:
+        from .services.storage_paths import get_files_root
+
+        return get_files_root() / self.relative_path

@@ -1,0 +1,242 @@
+<div class="card" id="deal-files-block">
+    <div class="card-header py-2">Состояние проекта</div>
+    <div class="card-body py-2">
+        {% if files_error %}
+            <div class="alert alert-danger py-2">{{ files_error }}</div>
+        {% endif %}
+        {% if files_notice %}
+            <div class="alert alert-success py-2">{{ files_notice }}</div>
+        {% endif %}
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <div class="border rounded p-2 h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">Файлы от заказчика</h6>
+                        <span class="badge text-bg-light">{{ client_files.count }}</span>
+                    </div>
+                    <div class="small text-muted mb-2">
+                        {% if client_files.latest %}
+                            Последнее изменение: {{ client_files.latest.updated_at|date:"d.m.Y H:i" }}
+                        {% else %}
+                            Пока нет файлов
+                        {% endif %}
+                    </div>
+                    <div class="mb-2 border rounded p-2 bg-light-subtle" style="min-height: 90px;">
+                        {% if client_files.latest %}
+                            {% if client_files.latest.category == 'photo' %}
+                                <img src="{% url 'deal_file_open' client_files.latest.id %}" alt="thumbnail" style="max-height: 70px; max-width: 100%; object-fit: contain;">
+                            {% elif client_files.latest.category == 'pdf' %}
+                                <iframe src="{% url 'deal_file_open' client_files.latest.id %}#page=1" title="pdf thumbnail" style="width: 100%; height: 70px; border: 0;"></iframe>
+                            {% else %}
+                                <div class="d-flex h-100 align-items-center justify-content-center text-muted">Миниатюра недоступна</div>
+                            {% endif %}
+                        {% else %}
+                            <div class="d-flex h-100 align-items-center justify-content-center text-muted">Нет файла для миниатюры</div>
+                        {% endif %}
+                    </div>
+                    {% if client_files.latest %}
+                        <div class="small mb-2"><strong>{{ client_files.latest.original_name }}</strong></div>
+                    {% endif %}
+                    <form
+                        id="upload-form-client"
+                        method="post"
+                        enctype="multipart/form-data"
+                        hx-post="{% url 'deal_file_upload' deal.id %}"
+                        hx-target="#deal-files-block"
+                        hx-swap="outerHTML"
+                        class="d-none"
+                    >
+                        {% csrf_token %}
+                        {{ client_upload_form.source }}
+                        {{ client_upload_form.upload }}
+                    </form>
+                    <div class="d-flex gap-2 mb-2">
+                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#client-files-list">Список файлов</button>
+                        <button class="btn btn-sm btn-primary" type="button" data-upload-trigger="client">Загрузить</button>
+                    </div>
+                    <div class="collapse" id="client-files-list">
+                        <div class="border rounded p-2">
+                            <div class="d-flex gap-2 mb-2">
+                                <input type="search" class="form-control form-control-sm" placeholder="Поиск по имени" data-file-search="client">
+                                <select class="form-select form-select-sm" data-file-sort="client">
+                                    <option value="updated_desc">Сорт: дата изменения ↓</option>
+                                    <option value="updated_asc">Сорт: дата изменения ↑</option>
+                                    <option value="name_asc">Сорт: имя А-Я</option>
+                                    <option value="name_desc">Сорт: имя Я-А</option>
+                                    <option value="created_desc">Сорт: дата добавления ↓</option>
+                                    <option value="created_asc">Сорт: дата добавления ↑</option>
+                                </select>
+                            </div>
+                            <form method="post" action="{% url 'deal_file_bulk_action' deal.id 'client' %}" class="mb-2" target="_blank">
+                                {% csrf_token %}
+                                <div class="btn-group btn-group-sm">
+                                    <button type="submit" name="action" value="download" class="btn btn-outline-primary">Скачать</button>
+                                    <button type="submit" name="action" value="preview" class="btn btn-outline-secondary">Просмотреть</button>
+                                    <button type="submit" name="action" value="archive" class="btn btn-outline-danger" formaction="{% url 'deal_file_bulk_action' deal.id 'client' %}" hx-post="{% url 'deal_file_bulk_action' deal.id 'client' %}" hx-target="#deal-files-block" hx-swap="outerHTML">Удалить</button>
+                                </div>
+                                <ul class="list-group list-group-flush mt-2" data-file-list="client">
+                                    {% for file in client_files.items %}
+                                        <li class="list-group-item px-0" data-name="{{ file.original_name|lower }}" data-created="{{ file.created_at|date:'U' }}" data-updated="{{ file.updated_at|date:'U' }}">
+                                            <div class="d-flex justify-content-between gap-2">
+                                                <label class="d-flex align-items-start gap-2 mb-0">
+                                                    <input type="checkbox" name="selected_ids" value="{{ file.id }}" class="form-check-input mt-1">
+                                                    <span>
+                                                        <span class="fw-semibold">{{ file.original_name }}</span><br>
+                                                        <small class="text-muted">Добавлен: {{ file.created_at|date:"d.m.Y H:i" }} | Изменен: {{ file.updated_at|date:"d.m.Y H:i" }}</small>
+                                                    </span>
+                                                </label>
+                                                <a class="btn btn-sm btn-outline-secondary" href="{% url 'deal_file_open' file.id %}" target="_blank">Открыть</a>
+                                            </div>
+                                        </li>
+                                    {% empty %}
+                                        <li class="list-group-item px-0 text-muted">Файлов пока нет.</li>
+                                    {% endfor %}
+                                </ul>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="border rounded p-2 h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">Файлы от проектировщика</h6>
+                        <span class="badge text-bg-light">{{ designer_files.count }}</span>
+                    </div>
+                    <div class="small text-muted mb-2">
+                        {% if designer_files.latest %}
+                            Последнее изменение: {{ designer_files.latest.updated_at|date:"d.m.Y H:i" }}
+                        {% else %}
+                            Пока нет файлов
+                        {% endif %}
+                    </div>
+                    <div class="mb-2 border rounded p-2 bg-light-subtle" style="min-height: 90px;">
+                        {% if designer_files.latest %}
+                            {% if designer_files.latest.category == 'photo' %}
+                                <img src="{% url 'deal_file_open' designer_files.latest.id %}" alt="thumbnail" style="max-height: 70px; max-width: 100%; object-fit: contain;">
+                            {% elif designer_files.latest.category == 'pdf' %}
+                                <iframe src="{% url 'deal_file_open' designer_files.latest.id %}#page=1" title="pdf thumbnail" style="width: 100%; height: 70px; border: 0;"></iframe>
+                            {% else %}
+                                <div class="d-flex h-100 align-items-center justify-content-center text-muted">Миниатюра недоступна</div>
+                            {% endif %}
+                        {% else %}
+                            <div class="d-flex h-100 align-items-center justify-content-center text-muted">Нет файла для миниатюры</div>
+                        {% endif %}
+                    </div>
+                    {% if designer_files.latest %}
+                        <div class="small mb-2"><strong>{{ designer_files.latest.original_name }}</strong></div>
+                    {% endif %}
+                    <form
+                        id="upload-form-designer"
+                        method="post"
+                        enctype="multipart/form-data"
+                        hx-post="{% url 'deal_file_upload' deal.id %}"
+                        hx-target="#deal-files-block"
+                        hx-swap="outerHTML"
+                        class="d-none"
+                    >
+                        {% csrf_token %}
+                        {{ designer_upload_form.source }}
+                        {{ designer_upload_form.upload }}
+                    </form>
+                    <div class="d-flex gap-2 mb-2">
+                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#designer-files-list">Список файлов</button>
+                        <button class="btn btn-sm btn-primary" type="button" data-upload-trigger="designer">Загрузить</button>
+                    </div>
+                    <div class="collapse" id="designer-files-list">
+                        <div class="border rounded p-2">
+                            <div class="d-flex gap-2 mb-2">
+                                <input type="search" class="form-control form-control-sm" placeholder="Поиск по имени" data-file-search="designer">
+                                <select class="form-select form-select-sm" data-file-sort="designer">
+                                    <option value="updated_desc">Сорт: дата изменения ↓</option>
+                                    <option value="updated_asc">Сорт: дата изменения ↑</option>
+                                    <option value="name_asc">Сорт: имя А-Я</option>
+                                    <option value="name_desc">Сорт: имя Я-А</option>
+                                    <option value="created_desc">Сорт: дата добавления ↓</option>
+                                    <option value="created_asc">Сорт: дата добавления ↑</option>
+                                </select>
+                            </div>
+                            <form method="post" action="{% url 'deal_file_bulk_action' deal.id 'designer' %}" class="mb-2" target="_blank">
+                                {% csrf_token %}
+                                <div class="btn-group btn-group-sm">
+                                    <button type="submit" name="action" value="download" class="btn btn-outline-primary">Скачать</button>
+                                    <button type="submit" name="action" value="preview" class="btn btn-outline-secondary">Просмотреть</button>
+                                    <button type="submit" name="action" value="archive" class="btn btn-outline-danger" formaction="{% url 'deal_file_bulk_action' deal.id 'designer' %}" hx-post="{% url 'deal_file_bulk_action' deal.id 'designer' %}" hx-target="#deal-files-block" hx-swap="outerHTML">Удалить</button>
+                                </div>
+                                <ul class="list-group list-group-flush mt-2" data-file-list="designer">
+                                    {% for file in designer_files.items %}
+                                        <li class="list-group-item px-0" data-name="{{ file.original_name|lower }}" data-created="{{ file.created_at|date:'U' }}" data-updated="{{ file.updated_at|date:'U' }}">
+                                            <div class="d-flex justify-content-between gap-2">
+                                                <label class="d-flex align-items-start gap-2 mb-0">
+                                                    <input type="checkbox" name="selected_ids" value="{{ file.id }}" class="form-check-input mt-1">
+                                                    <span>
+                                                        <span class="fw-semibold">{{ file.original_name }}</span><br>
+                                                        <small class="text-muted">Добавлен: {{ file.created_at|date:"d.m.Y H:i" }} | Изменен: {{ file.updated_at|date:"d.m.Y H:i" }}</small>
+                                                    </span>
+                                                </label>
+                                                <a class="btn btn-sm btn-outline-secondary" href="{% url 'deal_file_open' file.id %}" target="_blank">Открыть</a>
+                                            </div>
+                                        </li>
+                                    {% empty %}
+                                        <li class="list-group-item px-0 text-muted">Файлов пока нет.</li>
+                                    {% endfor %}
+                                </ul>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    (function () {
+        function wireUpload(source) {
+            var form = document.getElementById('upload-form-' + source);
+            if (!form) return;
+            var fileInput = form.querySelector('input[type="file"]');
+            var trigger = document.querySelector('[data-upload-trigger="' + source + '"]');
+            if (!fileInput || !trigger) return;
+            trigger.addEventListener('click', function () { fileInput.click(); });
+            fileInput.addEventListener('change', function () {
+                if (fileInput.files && fileInput.files.length > 0) {
+                    if (window.htmx) {
+                        window.htmx.trigger(form, 'submit');
+                    } else {
+                        form.submit();
+                    }
+                }
+            });
+        }
+        function wireFilter(source) {
+            var search = document.querySelector('[data-file-search="' + source + '"]');
+            var sort = document.querySelector('[data-file-sort="' + source + '"]');
+            var list = document.querySelector('[data-file-list="' + source + '"]');
+            if (!search || !sort || !list) return;
+            function apply() {
+                var items = Array.prototype.slice.call(list.querySelectorAll('li[data-name]'));
+                var q = (search.value || '').toLowerCase();
+                items.forEach(function (li) {
+                    li.style.display = li.getAttribute('data-name').indexOf(q) >= 0 ? '' : 'none';
+                });
+                items.sort(function (a, b) {
+                    var mode = sort.value;
+                    if (mode === 'name_asc') return a.getAttribute('data-name').localeCompare(b.getAttribute('data-name'));
+                    if (mode === 'name_desc') return b.getAttribute('data-name').localeCompare(a.getAttribute('data-name'));
+                    if (mode === 'created_desc') return Number(b.getAttribute('data-created')) - Number(a.getAttribute('data-created'));
+                    if (mode === 'created_asc') return Number(a.getAttribute('data-created')) - Number(b.getAttribute('data-created'));
+                    if (mode === 'updated_asc') return Number(a.getAttribute('data-updated')) - Number(b.getAttribute('data-updated'));
+                    return Number(b.getAttribute('data-updated')) - Number(a.getAttribute('data-updated'));
+                });
+                items.forEach(function (li) { list.appendChild(li); });
+            }
+            search.addEventListener('input', apply);
+            sort.addEventListener('change', apply);
+            apply();
+        }
+        wireUpload('client');
+        wireUpload('designer');
+        wireFilter('client');
+        wireFilter('designer');
+    })();
+</script>

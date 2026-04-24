@@ -1,10 +1,13 @@
+from pathlib import Path
+
 from rest_framework import status
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Deal, ProjectVersion, normalize_project_code
+from .models import Deal, ProjectFile, ProjectVersion, normalize_project_code
+from .services.storage_paths import ensure_deal_dirs, get_files_root, get_version_root
 
 
 class PluginProjectVersionCreateApi(APIView):
@@ -28,10 +31,12 @@ class PluginProjectVersionCreateApi(APIView):
                 status=Deal.Status.ORPHAN,
             )
             created_deal = True
+            ensure_deal_dirs(deal)
         elif deal.module_count != payload['module_count']:
             deal.module_count = payload['module_count']
             deal.save(update_fields=['module_count', 'updated_at'])
 
+        ensure_deal_dirs(deal)
         version = deal.create_new_version(source=ProjectVersion.Source.ARCHICAD, created_by=request.user)
         version.frozen_data = {
             'contract_version': 'v0-draft',
@@ -41,7 +46,20 @@ class PluginProjectVersionCreateApi(APIView):
             'objects': payload['objects'],
         }
         if payload.get('plan_pdf_filename'):
-            version.plan_pdf_path = payload['plan_pdf_filename'].strip()
+            raw_filename = payload['plan_pdf_filename'].strip().replace('\\', '/').split('/')[-1]
+            plan_relative = get_version_root(version).joinpath('plan', raw_filename).relative_to(get_files_root())
+            version.plan_pdf_path = str(plan_relative).replace('\\', '/')
+            ProjectFile.objects.create(
+                deal=deal,
+                project_version=version,
+                source=ProjectFile.Source.DESIGNER,
+                category=ProjectFile.Category.PDF,
+                relative_path=version.plan_pdf_path,
+                original_name=raw_filename,
+                size_bytes=0,
+                ext=Path(raw_filename).suffix.lower().lstrip('.'),
+                uploaded_by=request.user,
+            )
         version.save(update_fields=['frozen_data', 'plan_pdf_path'])
 
         return Response(

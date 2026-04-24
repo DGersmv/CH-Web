@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import ChangeLog, Deal, ProjectVersion
+from .models import ChangeLog, Deal, ProjectFile, ProjectVersion
 
 
 class ProjectVersionInline(admin.TabularInline):
@@ -58,3 +58,11 @@ class DealAdmin(admin.ModelAdmin):
     )
     ordering = ('-updated_at',)
     inlines = (ProjectVersionInline,)
+
+
+@admin.register(ProjectFile)
+class ProjectFileAdmin(admin.ModelAdmin):
+    list_display = ('deal', 'source', 'category', 'original_name', 'is_archived', 'updated_at')
+    list_filter = ('source', 'category', 'is_archived', 'updated_at')
+    search_fields = ('deal__project_code', 'original_name', 'relative_path')
+    ordering = ('-updated_at',)

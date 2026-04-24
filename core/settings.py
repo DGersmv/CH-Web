@@ -15,6 +15,7 @@ from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+CRM_FILES_ROOT = Path(os.getenv('CRM_FILES_ROOT', BASE_DIR / 'crm_files'))
 
 
 # Quick-start development settings - unsuitable for production

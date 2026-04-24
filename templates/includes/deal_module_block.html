@@ -1,0 +1,16 @@
+<span id="deal-module-block" class="d-inline-flex align-items-center gap-2">
+    <strong>{{ deal.module_count }}</strong>
+    <form method="post" hx-post="{% url 'deal_module_update' deal.id %}" hx-target="#deal-module-block" hx-swap="outerHTML">
+        {% csrf_token %}
+        <input
+            type="number"
+            class="form-control form-control-sm"
+            name="module_count"
+            min="0"
+            max="15"
+            value="{{ deal.module_count }}"
+            onchange="this.form.requestSubmit()"
+            style="width: 90px;"
+        >
+    </form>
+</span>

@@ -1,5 +1,5 @@
-from decimal import Decimal, InvalidOperation
-from datetime import timedelta
+from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -11,8 +11,9 @@ from django.utils import timezone
 from django.views.generic import DetailView, ListView
 
 from clients.models import Client
-from deals.forms import DashboardLeadForm, DealConfiguratorForm
-from deals.models import ChangeLog, Deal, ProjectVersion
+from deals.forms import DashboardLeadForm, DealConfiguratorForm, DealFileUploadForm
+from deals.models import ChangeLog, Deal, ProjectFile, ProjectVersion
+from deals.views import _files_summary
 from deals.services.calculation_engine import calculate_config
 from tasks.models import Task
 
@@ -307,4 +308,47 @@ class DealDetailView(LoginRequiredMixin, DetailView):
         context['change_logs'] = ChangeLog.objects.filter(project_version__deal=self.object).select_related(
             'project_version', 'changed_by'
         )[:20]
+        context['client_files'] = _files_summary(self.object, ProjectFile.Source.CLIENT)
+        context['designer_files'] = _files_summary(self.object, ProjectFile.Source.DESIGNER)
+        context['client_upload_form'] = DealFileUploadForm(initial={'source': ProjectFile.Source.CLIENT})
+        context['designer_upload_form'] = DealFileUploadForm(initial={'source': ProjectFile.Source.DESIGNER})
+        totals = (calc_result or {}).get('totals', {}) if isinstance(calc_result, dict) else {}
+        materials = self._as_money_decimal(totals.get('material_total'))
+        work = self._as_money_decimal(totals.get('work_total'))
+        subtotal = self._as_money_decimal(totals.get('subtotal'))
+        with_margin = self._as_money_decimal(totals.get('with_margin'))
+        building_area_value = self._as_decimal(config_form.initial.get('building_area'))
+        cost_per_m2 = None
+        if building_area_value and building_area_value > 0 and with_margin is not None:
+            cost_per_m2 = (with_margin / building_area_value).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        saved_at_raw = (frozen.get('saved_at') if isinstance(frozen, dict) else None) or draft_version.created_at
+        saved_at = saved_at_raw
+        if isinstance(saved_at_raw, str):
+            try:
+                saved_at = datetime.fromisoformat(saved_at_raw)
+            except ValueError:
+                saved_at = draft_version.created_at
+        context['cost_summary'] = {
+            'materials_total': materials or Decimal('0.00'),
+            'work_total': work or Decimal('0.00'),
+            'subtotal': subtotal or Decimal('0.00'),
+            'with_margin': with_margin or Decimal('0.00'),
+            'margin_percent': self._as_decimal(totals.get('margin_percent')) or Decimal(str(self.object.margin_percent)),
+            'saved_at': saved_at,
+            'building_area': building_area_value or Decimal('0.00'),
+            'cost_per_m2': cost_per_m2,
+        }
         return context
+
+    @staticmethod
+    def _as_decimal(value):
+        try:
+            return Decimal(str(value))
+        except (InvalidOperation, ValueError, TypeError):
+            return None
+
+    def _as_money_decimal(self, value):
+        parsed = self._as_decimal(value)
+        if parsed is None:
+            return None
+        return parsed.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
