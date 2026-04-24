@@ -27,7 +27,15 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'change-me')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 
-ALLOWED_HOSTS = ['*']
+
+def _split_csv(value: str):
+    return [item.strip() for item in (value or '').split(',') if item.strip()]
+
+
+ALLOWED_HOSTS = _split_csv(os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,SERVERARH'))
+CSRF_TRUSTED_ORIGINS = _split_csv(
+    os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:8001,http://SERVERARH:8001')
+)
 
 
 # Application definition
@@ -52,6 +60,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -133,6 +142,8 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
@@ -159,3 +170,8 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+USE_HTTPS = os.getenv('USE_HTTPS', 'False').lower() == 'true'
+SESSION_COOKIE_SECURE = USE_HTTPS
+CSRF_COOKIE_SECURE = USE_HTTPS
+SECURE_SSL_REDIRECT = USE_HTTPS
