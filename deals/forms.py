@@ -1,9 +1,10 @@
 from django import forms
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 from clients.models import Client
 
-from .models import Deal, normalize_project_code
+from .models import Deal, build_project_code_from_parts, normalize_project_code
 
 
 class DealCreateForm(forms.ModelForm):
@@ -15,29 +16,86 @@ class DealCreateForm(forms.ModelForm):
 
     class Meta:
         model = Deal
-        fields = ['project_code', 'module_count', 'client', 'assigned_manager']
+        fields = [
+            'module_count',
+            'code_client_name',
+            'code_site_name',
+            'project_code',
+            'client',
+            'assigned_manager',
+        ]
         widgets = {
-            'project_code': forms.TextInput(attrs={'class': 'form-control'}),
-            'module_count': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 15}),
+            'module_count': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'max': 15}),
+            'code_client_name': forms.TextInput(
+                attrs={
+                    'class': 'form-control',
+                    'placeholder': 'Напр. Иванов или ООО «Ромашка»',
+                    'autocomplete': 'off',
+                }
+            ),
+            'code_site_name': forms.TextInput(
+                attrs={
+                    'class': 'form-control',
+                    'placeholder': 'Напр. Пулково',
+                    'autocomplete': 'off',
+                }
+            ),
+            'project_code': forms.TextInput(attrs={'class': 'form-control', 'autocomplete': 'off'}),
             'client': forms.Select(attrs={'class': 'form-select'}),
             'assigned_manager': forms.Select(attrs={'class': 'form-select'}),
+        }
+        labels = {
+            'module_count': 'Количество модулей',
+            'code_client_name': 'Фамилия или название компании',
+            'code_site_name': 'Название участка',
+            'project_code': 'Код проекта',
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['client'].required = False
         self.fields['assigned_manager'].required = False
+        self.fields['project_code'].required = False
         self.fields['client'].queryset = Client.objects.order_by('full_name')
         self.fields['assigned_manager'].queryset = get_user_model().objects.filter(role='manager').order_by('username')
 
-    def clean_project_code(self):
-        value = self.cleaned_data['project_code'].strip()
-        normalized = normalize_project_code(value)
-        if Deal.objects.filter(project_code_normalized=normalized).exists():
-            raise forms.ValidationError('Сделка с таким project_code уже существует.')
-        if 'мд' not in normalized:
-            raise forms.ValidationError('Формат project_code должен включать "МД".')
-        return value
+    def clean(self):
+        cleaned = super().clean()
+        if 'module_count' in self.errors:
+            return cleaned
+
+        module_count = cleaned.get('module_count')
+        if module_count is None:
+            return cleaned
+
+        client_part = (cleaned.get('code_client_name') or '').strip()
+        site_part = (cleaned.get('code_site_name') or '').strip()
+        if not client_part:
+            self.add_error('code_client_name', 'Укажите фамилию или название компании.')
+        if not site_part:
+            self.add_error('code_site_name', 'Укажите название участка.')
+        if 'code_client_name' in self.errors or 'code_site_name' in self.errors:
+            return cleaned
+
+        project_code = (cleaned.get('project_code') or '').strip()
+        if not project_code:
+            project_code = build_project_code_from_parts(module_count, client_part, site_part)
+        cleaned['project_code'] = project_code
+
+        norm = normalize_project_code(cleaned['project_code'])
+        if Deal.objects.filter(project_code_normalized=norm).exists():
+            self.add_error('project_code', 'Сделка с таким кодом проекта уже существует.')
+        elif 'мд' not in norm:
+            self.add_error('project_code', 'Код должен содержать «МД» (например 3МД-Иванов-Пулково).')
+        return cleaned
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.code_client_name = (self.cleaned_data.get('code_client_name') or '').strip()
+        instance.code_site_name = (self.cleaned_data.get('code_site_name') or '').strip()
+        if commit:
+            instance.save()
+        return instance
 
 
 class DealConfiguratorForm(forms.Form):
@@ -75,3 +133,87 @@ class DealConfiguratorForm(forms.Form):
         for field_name, field in self.fields.items():
             css = 'form-select' if isinstance(field, forms.ChoiceField) else 'form-control'
             field.widget.attrs.update({'class': css})
+
+
+class DashboardLeadForm(forms.Form):
+    last_name = forms.CharField(
+        label='Фамилия',
+        max_length=100,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'autocomplete': 'off'}),
+    )
+    first_name = forms.CharField(
+        label='Имя',
+        max_length=100,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'autocomplete': 'off'}),
+    )
+    middle_name = forms.CharField(
+        label='Отчество',
+        required=False,
+        max_length=100,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'autocomplete': 'off'}),
+    )
+    phone = forms.CharField(
+        label='Номер телефона',
+        initial='+7',
+        required=False,
+        max_length=50,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '+7'}),
+    )
+    email = forms.EmailField(
+        label='Адрес электронной почты',
+        required=False,
+        widget=forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'client@example.com'}),
+    )
+    location = forms.CharField(
+        label='Участок (где планируется строительство)',
+        max_length=255,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'autocomplete': 'off'}),
+    )
+    region_or_city = forms.CharField(
+        label='Область или город',
+        required=False,
+        max_length=150,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'autocomplete': 'off'}),
+    )
+    street = forms.CharField(
+        label='Улица',
+        required=False,
+        max_length=150,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'autocomplete': 'off'}),
+    )
+    house_number = forms.CharField(
+        label='Номер дома',
+        required=False,
+        max_length=50,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'autocomplete': 'off'}),
+    )
+    comment = forms.CharField(
+        label='Комментарий',
+        required=False,
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Что важно помнить при общении с клиентом'}),
+    )
+    mortgage_required = forms.BooleanField(
+        label='Ипотека',
+        required=False,
+        initial=False,
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+    )
+    target_deal_date = forms.DateField(
+        label='Срок выхода на сделку',
+        initial=timezone.localdate,
+        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+        input_formats=['%Y-%m-%d'],
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.is_bound:
+            self.fields['target_deal_date'].initial = timezone.localdate()
+
+    def clean_phone(self):
+        value = (self.cleaned_data.get('phone') or '').strip()
+        if not value:
+            return '+7'
+        if not value.startswith('+7'):
+            raise forms.ValidationError('Номер должен начинаться с +7.')
+        return value

@@ -3,7 +3,17 @@
 {% block content %}
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="mb-0">Dashboard</h1>
-        <span class="text-muted">Пользователь: {{ user.username }}</span>
+        <div class="d-flex align-items-center gap-2">
+            <button
+                type="button"
+                class="btn btn-primary"
+                data-bs-toggle="modal"
+                data-bs-target="#newLeadModal"
+            >
+                Новый лид
+            </button>
+            <span class="text-muted">Пользователь: {{ user.username }}</span>
+        </div>
     </div>
 
     {% if user.role == 'head' %}
@@ -135,6 +145,32 @@
                         <p class="text-muted mb-0">Сделок без движения нет.</p>
                     {% endif %}
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="newLeadModal" tabindex="-1" aria-labelledby="newLeadModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <form
+                    method="post"
+                    hx-post="{% url 'dashboard_lead_create' %}"
+                    hx-target="#new-lead-modal-body"
+                    hx-swap="innerHTML"
+                >
+                    {% csrf_token %}
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="newLeadModalLabel">Новый лид</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body" id="new-lead-modal-body">
+                        {% include "includes/dashboard_lead_modal_body.html" with lead_form=lead_form %}
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+                        <button type="submit" class="btn btn-primary">Создать лид</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>

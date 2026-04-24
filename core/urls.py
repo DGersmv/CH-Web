@@ -19,6 +19,7 @@ from django.urls import include, path
 
 from deals.api_views import PluginProjectVersionCreateApi
 from deals.views import (
+    create_dashboard_lead,
     DealCreateView,
     claim_lead,
     recalc_configurator,
@@ -44,6 +45,7 @@ urlpatterns = [
     path('deals/<int:deal_id>/config/recalc/', recalc_configurator, name='config_recalc'),
     path('deals/<int:deal_id>/config/save/', save_configurator_draft, name='config_save'),
     path('dashboard/leads/<int:deal_id>/claim/', claim_lead, name='dashboard_claim_lead'),
+    path('dashboard/leads/create/', create_dashboard_lead, name='dashboard_lead_create'),
     path('tasks/<int:task_id>/toggle/', toggle_task, name='task_toggle'),
     path('tasks/', TaskListView.as_view(), name='tasks'),
     path('clients/', clients_page, name='clients'),

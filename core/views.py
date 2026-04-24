@@ -11,7 +11,7 @@ from django.utils import timezone
 from django.views.generic import DetailView, ListView
 
 from clients.models import Client
-from deals.forms import DealConfiguratorForm
+from deals.forms import DashboardLeadForm, DealConfiguratorForm
 from deals.models import ChangeLog, Deal, ProjectVersion
 from deals.services.calculation_engine import calculate_config
 from tasks.models import Task
@@ -56,6 +56,7 @@ def home(request):
         'archicad_updates': archicad_updates,
         'stale_deals': stale_deals,
         'new_leads': new_leads,
+        'lead_form': DashboardLeadForm(),
         'today': today,
     }
 

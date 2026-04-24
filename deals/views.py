@@ -1,6 +1,6 @@
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.http import HttpResponseBadRequest
+from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 from django.views.generic.edit import FormView
@@ -9,8 +9,8 @@ from decimal import Decimal
 
 from clients.models import Client
 
-from .forms import DealConfiguratorForm, DealCreateForm
-from .models import ChangeLog, Deal
+from .forms import DashboardLeadForm, DealConfiguratorForm, DealCreateForm
+from .models import ChangeLog, Deal, build_project_code_from_parts
 from .services.calculation_engine import CALC_SCHEMA_VERSION, calculate_config
 
 
@@ -125,6 +125,61 @@ class DealCreateView(LoginRequiredMixin, FormView):
             deal.client = client
         deal.save()
         return redirect('deal_detail', pk=deal.pk)
+
+
+@login_required
+@require_POST
+def create_dashboard_lead(request):
+    form = DashboardLeadForm(request.POST)
+    if not form.is_valid():
+        return render(request, 'includes/dashboard_lead_modal_body.html', {'lead_form': form}, status=400)
+
+    full_name = ' '.join(
+        part.strip()
+        for part in [
+            form.cleaned_data['last_name'],
+            form.cleaned_data['first_name'],
+            form.cleaned_data.get('middle_name', ''),
+        ]
+        if part and part.strip()
+    )
+    site_name = form.cleaned_data['location'].strip()
+    lead_project_code = build_project_code_from_parts(0, form.cleaned_data['last_name'].strip(), site_name)
+    region_or_city = form.cleaned_data.get('region_or_city', '').strip()
+    street = form.cleaned_data.get('street', '').strip()
+    house_number = form.cleaned_data.get('house_number', '').strip()
+    address_parts = []
+    if region_or_city:
+        address_parts.append(region_or_city)
+    if street:
+        address_parts.append(f'ул. {street}')
+    if house_number:
+        address_parts.append(f'д. {house_number}')
+    address_text = ', '.join(address_parts)
+    location_text = f'Участок: {site_name}'
+    if address_text:
+        location_text = f'{location_text}. Адрес: {address_text}'
+    client = Client.objects.create(
+        full_name=full_name,
+        phone=form.cleaned_data['phone'],
+        email=form.cleaned_data.get('email', ''),
+        location=location_text,
+        notes=(form.cleaned_data.get('comment') or '').strip(),
+        created_by=request.user,
+    )
+    deal = Deal.objects.create(
+        project_code=lead_project_code,
+        code_client_name=form.cleaned_data['last_name'].strip(),
+        code_site_name=site_name,
+        module_count=0,
+        client=client,
+        status=Deal.Status.NEW,
+        mortgage_required=form.cleaned_data['mortgage_required'],
+        target_deal_date=form.cleaned_data['target_deal_date'],
+    )
+    response = HttpResponse('')
+    response['HX-Redirect'] = redirect('deal_detail', pk=deal.pk).url
+    return response
 
 
 def _get_or_create_draft_version(deal, user):

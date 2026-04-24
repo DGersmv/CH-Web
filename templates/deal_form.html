@@ -8,20 +8,36 @@
 
     <div class="card">
         <div class="card-body">
-            <form method="post" class="row g-3">
+            <form method="post" class="row g-3" id="deal-create-form">
                 {% csrf_token %}
-                <div class="col-12">
-                    <label class="form-label" for="{{ form.project_code.id_for_label }}">Project code</label>
-                    {{ form.project_code }}
-                    {% if form.project_code.errors %}
-                        <div class="text-danger small">{{ form.project_code.errors|join:", " }}</div>
-                    {% endif %}
-                </div>
                 <div class="col-md-4">
-                    <label class="form-label" for="{{ form.module_count.id_for_label }}">Количество модулей</label>
+                    <label class="form-label" for="{{ form.module_count.id_for_label }}">{{ form.module_count.label }}</label>
                     {{ form.module_count }}
                     {% if form.module_count.errors %}
                         <div class="text-danger small">{{ form.module_count.errors|join:", " }}</div>
+                    {% endif %}
+                    <div class="form-text">В код подставляется число и «МД» (2 модуля → 2МД, 3 модуля → 3МД).</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="{{ form.code_client_name.id_for_label }}">{{ form.code_client_name.label }}</label>
+                    {{ form.code_client_name }}
+                    {% if form.code_client_name.errors %}
+                        <div class="text-danger small">{{ form.code_client_name.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="{{ form.code_site_name.id_for_label }}">{{ form.code_site_name.label }}</label>
+                    {{ form.code_site_name }}
+                    {% if form.code_site_name.errors %}
+                        <div class="text-danger small">{{ form.code_site_name.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-12">
+                    <label class="form-label" for="{{ form.project_code.id_for_label }}">{{ form.project_code.label }}</label>
+                    {{ form.project_code }}
+                    <div class="form-text">Собирается из полей выше; при необходимости отредактируйте вручную.</div>
+                    {% if form.project_code.errors %}
+                        <div class="text-danger small">{{ form.project_code.errors|join:", " }}</div>
                     {% endif %}
                 </div>
                 <div class="col-md-4">
@@ -52,4 +68,35 @@
             </form>
         </div>
     </div>
+    <script>
+        (function () {
+            const form = document.getElementById('deal-create-form');
+            if (!form) return;
+            const mod = form.querySelector('#id_module_count');
+            const client = form.querySelector('#id_code_client_name');
+            const site = form.querySelector('#id_code_site_name');
+            const code = form.querySelector('#id_project_code');
+            if (!mod || !client || !site || !code) return;
+
+            function collapse(s) {
+                return s.replace(/\s+/g, ' ').trim();
+            }
+            var manual = false;
+            function sync() {
+                if (manual) return;
+                const n = parseInt(mod.value, 10);
+                if (isNaN(n) || n < 1 || n > 15) return;
+                const c = collapse(client.value);
+                const t = collapse(site.value);
+                code.value = n + 'МД-' + c + '-' + t;
+            }
+            [mod, client, site].forEach(function (el) {
+                el.addEventListener('input', sync);
+                el.addEventListener('change', sync);
+            });
+            code.addEventListener('input', function () {
+                manual = true;
+            });
+        })();
+    </script>
 {% endblock %}

@@ -8,7 +8,8 @@ from pathlib import Path
 
 from deals.services.calculation_engine import CALC_SCHEMA_VERSION, build_formula_reconciliation_report, calculate_config
 
-from .models import Deal, ProjectVersion
+from .forms import DashboardLeadForm
+from .models import Deal, ProjectVersion, build_project_code_from_parts
 
 
 class PluginProjectVersionCreateApiTests(APITestCase):
@@ -71,6 +72,70 @@ class PluginProjectVersionCreateApiTests(APITestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
         response = self.client.post(self.url, bad_payload, format='json')
         self.assertEqual(response.status_code, 400)
+
+
+class BuildProjectCodeTests(TestCase):
+    def test_dash_separated_format(self):
+        self.assertEqual(build_project_code_from_parts(2, 'Иванов', 'Пулково'), '2МД-Иванов-Пулково')
+        self.assertEqual(build_project_code_from_parts(3, '  ООО  Тест  ', ' Уч. 1 '), '3МД-ООО Тест-Уч. 1')
+
+
+class DashboardLeadFormTests(TestCase):
+    def test_phone_defaults_to_plus7_when_empty(self):
+        form = DashboardLeadForm(
+            data={
+                'last_name': 'Иванов',
+                'first_name': 'Иван',
+                'middle_name': 'Иванович',
+                'phone': '',
+                'email': 'ivanov@example.com',
+                'location': 'Пулково',
+                'region_or_city': 'Ленинградская область',
+                'street': 'Центральная',
+                'house_number': '12',
+                'comment': 'Предпочитает связь в мессенджере вечером',
+                'target_deal_date': '2026-04-24',
+            }
+        )
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.cleaned_data['phone'], '+7')
+
+    def test_phone_must_start_with_plus7(self):
+        form = DashboardLeadForm(
+            data={
+                'last_name': 'Иванов',
+                'first_name': 'Иван',
+                'middle_name': '',
+                'phone': '89001234567',
+                'email': 'ivanov@example.com',
+                'location': 'Пулково',
+                'region_or_city': 'Ленинградская область',
+                'street': 'Центральная',
+                'house_number': '12',
+                'comment': '',
+                'target_deal_date': '2026-04-24',
+            }
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn('phone', form.errors)
+
+    def test_address_fields_can_be_empty(self):
+        form = DashboardLeadForm(
+            data={
+                'last_name': 'Иванов',
+                'first_name': 'Иван',
+                'middle_name': '',
+                'phone': '+79001234567',
+                'email': 'ivanov@example.com',
+                'location': 'Пулково',
+                'region_or_city': '',
+                'street': '',
+                'house_number': '',
+                'comment': 'Тест',
+                'target_deal_date': '2026-04-24',
+            }
+        )
+        self.assertTrue(form.is_valid())
 
 
 class ExcelRegressionCalculationTests(TestCase):

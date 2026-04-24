@@ -11,6 +11,12 @@ def normalize_project_code(value: str) -> str:
     return re.sub(r'\s+', ' ', value.strip().lower())
 
 
+def build_project_code_from_parts(module_count: int, client_part: str, site_part: str) -> str:
+    client_segment = re.sub(r'\s+', ' ', (client_part or '').strip())
+    site_segment = re.sub(r'\s+', ' ', (site_part or '').strip())
+    return f'{module_count}МД-{client_segment}-{site_segment}'
+
+
 class Deal(models.Model):
     class Status(models.TextChoices):
         ORPHAN = 'orphan', 'Orphan'
@@ -24,10 +30,20 @@ class Deal(models.Model):
         DELIVERED = 'delivered', 'Delivered'
         LOST = 'lost', 'Lost'
 
-    project_code = models.CharField(max_length=200, unique=True)
+    project_code = models.CharField(max_length=200, unique=True, verbose_name='Код проекта')
     project_code_normalized = models.CharField(max_length=200, unique=True, db_index=True)
+    code_client_name = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name='Фамилия / компания (в коде проекта)',
+    )
+    code_site_name = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name='Название участка (в коде проекта)',
+    )
     module_count = models.PositiveSmallIntegerField(
-        validators=[MinValueValidator(1), MaxValueValidator(15)]
+        validators=[MinValueValidator(0), MaxValueValidator(15)]
     )
     client = models.ForeignKey(
         Client,
@@ -45,6 +61,8 @@ class Deal(models.Model):
         related_name='assigned_deals',
     )
     margin_percent = models.DecimalField(max_digits=5, decimal_places=2, default=30)
+    mortgage_required = models.BooleanField(default=False, verbose_name='Ипотека')
+    target_deal_date = models.DateField(null=True, blank=True, verbose_name='Срок выхода на сделку')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

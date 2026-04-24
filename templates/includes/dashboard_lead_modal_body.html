@@ -1,0 +1,88 @@
+<div class="row g-3">
+    <div class="col-md-4">
+        <label class="form-label" for="{{ lead_form.last_name.id_for_label }}">{{ lead_form.last_name.label }}</label>
+        {{ lead_form.last_name }}
+        {% if lead_form.last_name.errors %}
+            <div class="text-danger small">{{ lead_form.last_name.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+    <div class="col-md-4">
+        <label class="form-label" for="{{ lead_form.first_name.id_for_label }}">{{ lead_form.first_name.label }}</label>
+        {{ lead_form.first_name }}
+        {% if lead_form.first_name.errors %}
+            <div class="text-danger small">{{ lead_form.first_name.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+    <div class="col-md-4">
+        <label class="form-label" for="{{ lead_form.middle_name.id_for_label }}">{{ lead_form.middle_name.label }}</label>
+        {{ lead_form.middle_name }}
+        {% if lead_form.middle_name.errors %}
+            <div class="text-danger small">{{ lead_form.middle_name.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+    <div class="col-md-6">
+        <label class="form-label" for="{{ lead_form.phone.id_for_label }}">{{ lead_form.phone.label }}</label>
+        {{ lead_form.phone }}
+        {% if lead_form.phone.errors %}
+            <div class="text-danger small">{{ lead_form.phone.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+    <div class="col-md-6">
+        <label class="form-label" for="{{ lead_form.email.id_for_label }}">{{ lead_form.email.label }}</label>
+        {{ lead_form.email }}
+        {% if lead_form.email.errors %}
+            <div class="text-danger small">{{ lead_form.email.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+    <div class="col-md-6">
+        <label class="form-label" for="{{ lead_form.location.id_for_label }}">{{ lead_form.location.label }}</label>
+        {{ lead_form.location }}
+        {% if lead_form.location.errors %}
+            <div class="text-danger small">{{ lead_form.location.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+    <div class="col-md-4">
+        <label class="form-label" for="{{ lead_form.region_or_city.id_for_label }}">{{ lead_form.region_or_city.label }}</label>
+        {{ lead_form.region_or_city }}
+        {% if lead_form.region_or_city.errors %}
+            <div class="text-danger small">{{ lead_form.region_or_city.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+    <div class="col-md-4">
+        <label class="form-label" for="{{ lead_form.street.id_for_label }}">{{ lead_form.street.label }}</label>
+        {{ lead_form.street }}
+        {% if lead_form.street.errors %}
+            <div class="text-danger small">{{ lead_form.street.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+    <div class="col-md-4">
+        <label class="form-label" for="{{ lead_form.house_number.id_for_label }}">{{ lead_form.house_number.label }}</label>
+        {{ lead_form.house_number }}
+        {% if lead_form.house_number.errors %}
+            <div class="text-danger small">{{ lead_form.house_number.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+    <div class="col-12">
+        <label class="form-label" for="{{ lead_form.comment.id_for_label }}">{{ lead_form.comment.label }}</label>
+        {{ lead_form.comment }}
+        {% if lead_form.comment.errors %}
+            <div class="text-danger small">{{ lead_form.comment.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+    <div class="col-md-6">
+        <label class="form-label" for="{{ lead_form.target_deal_date.id_for_label }}">{{ lead_form.target_deal_date.label }}</label>
+        {{ lead_form.target_deal_date }}
+        {% if lead_form.target_deal_date.errors %}
+            <div class="text-danger small">{{ lead_form.target_deal_date.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+    <div class="col-md-6 d-flex align-items-end">
+        <div class="form-check mb-2">
+            {{ lead_form.mortgage_required }}
+            <label class="form-check-label" for="{{ lead_form.mortgage_required.id_for_label }}">{{ lead_form.mortgage_required.label }}</label>
+        </div>
+        {% if lead_form.mortgage_required.errors %}
+            <div class="text-danger small">{{ lead_form.mortgage_required.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+</div>

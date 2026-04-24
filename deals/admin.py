@@ -49,6 +49,12 @@ class DealAdmin(admin.ModelAdmin):
         'updated_at',
     )
     list_filter = ('status', 'module_count', 'assigned_manager', 'created_at', 'updated_at')
-    search_fields = ('project_code', 'project_code_normalized', 'client__full_name')
+    search_fields = (
+        'project_code',
+        'project_code_normalized',
+        'code_client_name',
+        'code_site_name',
+        'client__full_name',
+    )
     ordering = ('-updated_at',)
     inlines = (ProjectVersionInline,)
