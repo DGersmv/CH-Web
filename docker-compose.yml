@@ -45,7 +45,10 @@ services:
       DJANGO_COLLECTSTATIC: "1"
       DJANGO_RUN_MIGRATIONS: "1"
       DJANGO_SEED_DEMO_DATA: "0"
-    command: sh /app/docker/entrypoint.sh
+    command:
+      - sh
+      - -c
+      - python manage.py migrate --noinput && python manage.py collectstatic --noinput && if [ "$${DJANGO_SEED_DEMO_DATA}" = "1" ] || [ "$${DJANGO_SEED_DEMO_DATA}" = "true" ] || [ "$${DJANGO_SEED_DEMO_DATA}" = "True" ]; then python manage.py seed_demo_data; fi && exec python manage.py runserver 0.0.0.0:8000
     volumes:
       - .:/app
     ports:
