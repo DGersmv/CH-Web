@@ -1,5 +1,8 @@
 from decimal import Decimal, ROUND_HALF_UP
 
+from .bathrooms import bathrooms_totals, has_bathroom_data
+from .additional_options import additional_options_rows, additional_options_totals
+
 CALC_SCHEMA_VERSION = 'excel-v1'
 
 ROW_LABELS = {
@@ -132,7 +135,7 @@ def build_formula_reconciliation_report(excel_extract):
     return {'ok': all(r['ok'] for r in rows), 'errors': [], 'rows': rows}
 
 
-def calculate_config(inputs, margin_percent):
+def calculate_config(inputs, margin_percent, version=None):
     building_area = _to_decimal(inputs.get('building_area'))
     living_area = _to_decimal(inputs.get('living_area'))
     ceiling_height = _to_decimal(inputs.get('ceiling_height'))
@@ -175,7 +178,25 @@ def calculate_config(inputs, margin_percent):
     bathroom_tile_area = _money(bathroom_tile_lm * (ceiling_height + Decimal('0.05')))
     roof_gable_area = _money(roof_gable_qty * Decimal('1.15'))
     roof_flat_area = _money(roof_flat_qty)
+
+    # Пер-санузловые суммы: из данных вкладок или из эталона Excel (вкладка 2).
     bath2_material_total, bath2_work_total = _bathroom_sheet_totals()
+    pm_equip_unit = bath2_material_total
+    pw_plumb_unit = bath2_work_total
+    pm_plumb_unit = Decimal('60000')
+    if version is not None and has_bathroom_data(version):
+        bm, bw = bathrooms_totals(version)
+        n_bath = int(bathrooms_count)
+        if n_bath > 0:
+            pm_equip_unit = _money(bm / Decimal(n_bath))
+            pw_plumb_unit = _money(bw / Decimal(n_bath))
+            # When bathroom tabs are used, materials are already fully captured in bm.
+            # Keep plumbing material at 0 to avoid double-counting legacy +60k.
+            pm_plumb_unit = Decimal('0')
+        else:
+            pm_equip_unit = Decimal('0')
+            pw_plumb_unit = Decimal('0')
+            pm_plumb_unit = Decimal('0')
 
     rows = [
         _rule('project_design', 'C4', 'I4', 'sqm', building_area, '0', '500'),
@@ -202,13 +223,29 @@ def calculate_config(inputs, margin_percent):
         _rule('interior_doors', 'C25', 'I25', 'pcs', interior_doors_count, '28000', '8000'),
         _rule('sauna', 'D26/F26', 'I26', 'rubles', Decimal('1') if sauna_cost > 0 or sauna_installation_cost > 0 else Decimal('0'), sauna_cost, sauna_installation_cost),
         _rule('window_finishing', 'C27', 'I27', 'pcs', windows_count, '6000', '4000'),
-        _rule('windows_total', 'C28', 'I28', 'pcs', windows_count, windows_total_cost, '4000'),
+        _rule(
+            'windows_total',
+            'C28',
+            'I28',
+            'rubles',
+            Decimal('1') if windows_total_cost > 0 else Decimal('0'),
+            windows_total_cost,
+            '0',
+        ),
         _rule('panoramic_finishing', 'C29', 'I29', 'pcs', panoramic_sections_count, '12000', '10000'),
-        _rule('panoramic_sections_total', 'C30', 'I30', 'pcs', panoramic_sections_count, panoramic_sections_total_cost, '10000'),
+        _rule(
+            'panoramic_sections_total',
+            'C30',
+            'I30',
+            'rubles',
+            Decimal('1') if panoramic_sections_total_cost > 0 else Decimal('0'),
+            panoramic_sections_total_cost,
+            '0',
+        ),
         _rule('store_and_paint', 'C31', 'I31', 'sqm', building_area, '0', '1700'),
         _rule('electrics', 'C32', 'I32', 'sqm', building_area, '2600', '1800'),
-        _rule('plumbing', 'C33', 'I33', 'set', bathrooms_count, '60000', bath2_work_total),
-        _rule('bathroom_equipment', 'C34', 'I34', 'set', bathrooms_count, bath2_material_total, '0'),
+        _rule('plumbing', 'C33', 'I33', 'set', bathrooms_count, str(pm_plumb_unit), str(pw_plumb_unit)),
+        _rule('bathroom_equipment', 'C34', 'I34', 'set', bathrooms_count, str(pm_equip_unit), '0'),
         _rule('convectors', 'C35', 'I35', 'sqm', building_area, '600', '100'),
         _rule('consumables', 'C36', 'I36', 'sqm', building_area, '1600', '0'),
         _rule('packaging', 'C37', 'I37', 'sqm', building_area, '600', '0'),
@@ -222,6 +259,13 @@ def calculate_config(inputs, margin_percent):
 
     material_total = _money(sum((row['material_total'] for row in rows), Decimal('0')))
     work_total = _money(sum((row['work_total'] for row in rows), Decimal('0')))
+    add_m = Decimal('0.00')
+    add_w = Decimal('0.00')
+    add_rows = []
+    if version is not None:
+        add_m, add_w = additional_options_totals(version)
+        add_rows = additional_options_rows(version)
+
     subtotal = _money(material_total + work_total)
     with_margin = _money(subtotal * (Decimal('1') + (Decimal(str(margin_percent)) / Decimal('100'))))
     return {
@@ -234,5 +278,11 @@ def calculate_config(inputs, margin_percent):
             'subtotal': subtotal,
             'with_margin': with_margin,
             'margin_percent': Decimal(str(margin_percent)),
+        },
+        'additional_options': {
+            'rows': add_rows,
+            'material_total': _money(add_m),
+            'work_total': _money(add_w),
+            'subtotal': _money(add_m + add_w),
         },
     }

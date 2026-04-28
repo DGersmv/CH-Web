@@ -1,0 +1,529 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="mb-0">Наполнение санузлов — {{ deal.project_code }}</h1>
+            <small class="text-muted">Draft v{{ draft_version.version_number }}</small>
+        </div>
+        <div class="d-flex gap-2">
+            <button
+                type="button"
+                class="btn btn-success"
+                id="js-save-bathrooms-and-return"
+                data-return-url="{% url 'deal_cost_summary_page' deal.id %}"
+            >Сохранить расчет санузлов</button>
+            <a href="{% url 'deal_cost_summary_page' deal.id %}" class="btn btn-outline-secondary">Назад к смете</a>
+        </div>
+    </div>
+
+    {% if request.GET.saved %}
+        <div class="alert alert-success py-2">Вкладка сохранена, смета пересчитана.</div>
+    {% endif %}
+    {% if request.GET.stale %}
+        <div class="alert alert-warning py-2">Старая ссылка на вкладку устарела. Страница обновлена до актуального состава санузлов.</div>
+    {% endif %}
+
+    {% if form_error_bathroom_id %}
+        <div class="alert alert-danger py-2">Проверьте значения в строках (количество и цена должны быть неотрицательными).</div>
+    {% endif %}
+
+    <div class="card mb-3">
+        <div class="card-header">
+            Каталог по фильтру:
+            <strong>{{ template_section.code }}</strong>
+            {% if template_section %}
+                <span class="text-muted">— {{ template_section.name_ru }}</span>
+            {% endif %}
+        </div>
+        <div class="card-body py-2">
+            <div class="row g-2">
+                <div class="col-md-4">
+                    <strong>Итого материалы (все санузлы):</strong>
+                    <span id="js-all-material-total">{{ material_total_all|floatformat:2|intcomma }}</span> ₽
+                </div>
+                <div class="col-md-4">
+                    <strong>Итого работы (все санузлы):</strong>
+                    <span id="js-all-work-total">{{ work_total_all|floatformat:2|intcomma }}</span> ₽
+                </div>
+                <div class="col-md-4">
+                    <strong>Общий итог:</strong>
+                    <span id="js-all-grand-total">{{ grand_total_all|floatformat:2|intcomma }}</span> ₽
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <ul class="nav nav-tabs" role="tablist">
+        {% for tab in bathroom_tabs %}
+            <li class="nav-item" role="presentation">
+                <button
+                    class="nav-link {% if forloop.first %}active{% endif %}"
+                    id="tab-head-{{ tab.bathroom.id }}"
+                    data-bs-toggle="tab"
+                    data-bs-target="#tab-pane-{{ tab.bathroom.id }}"
+                    type="button"
+                    role="tab"
+                    aria-controls="tab-pane-{{ tab.bathroom.id }}"
+                    {% if forloop.first %}aria-selected="true"{% else %}aria-selected="false"{% endif %}
+                >
+                    Санузел №{{ tab.bathroom.index }}
+                </button>
+            </li>
+        {% endfor %}
+    </ul>
+
+    <div class="tab-content border border-top-0 rounded-bottom p-3 mb-4">
+        {% for tab in bathroom_tabs %}
+            <div
+                class="tab-pane fade {% if forloop.first %}show active{% endif %}"
+                id="tab-pane-{{ tab.bathroom.id }}"
+                role="tabpanel"
+                aria-labelledby="tab-head-{{ tab.bathroom.id }}"
+                tabindex="0"
+            >
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <h5 class="mb-1">Санузел №{{ tab.bathroom.index }}</h5>
+                        <div class="text-muted small">
+                            Шаблон каталога: {{ template_section.code }} — {{ template_section.name_ru }}
+                        </div>
+                    </div>
+                    <div class="text-end small">
+                        <div>
+                            <strong>Материалы:</strong>
+                            <span class="js-tab-material-total">{{ tab.material_total|floatformat:2|intcomma }}</span> ₽
+                        </div>
+                        <div>
+                            <strong>Работы:</strong>
+                            <span class="js-tab-work-total">{{ tab.work_total|floatformat:2|intcomma }}</span> ₽
+                        </div>
+                        <div>
+                            <strong>Итого:</strong>
+                            <span class="js-tab-subtotal">{{ tab.subtotal|floatformat:2|intcomma }}</span> ₽
+                        </div>
+                    </div>
+                </div>
+
+                <form method="post" action="{% url 'deal_bathroom_tab_save' deal.id tab.bathroom.id %}">
+                    {% csrf_token %}
+                    {{ tab.formset.management_form }}
+                    <div class="d-none">
+                        {% for form in tab.formset %}
+                            {% for hidden in form.hidden_fields %}
+                                {{ hidden }}
+                            {% endfor %}
+                        {% endfor %}
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 3rem;">Вкл.</th>
+                                    <th style="width: 7rem;">Тип</th>
+                                    <th>Наименование</th>
+                                    <th style="width: 18rem;">Модель</th>
+                                    <th style="width: 6rem;">Кол-во</th>
+                                    <th style="width: 8rem;">Цена, ₽</th>
+                                    <th style="width: 9rem;">Сумма, ₽</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for form in tab.formset %}
+                                    <tr data-kind="{{ form.instance.kind }}">
+                                        <td class="text-center">{{ form.is_included }}</td>
+                                        <td>
+                                            {% if form.instance.kind == 'material' %}Материал{% elif form.instance.kind == 'work' %}Работа{% else %}—{% endif %}
+                                        </td>
+                                        <td>{{ form.instance.name_snapshot }}</td>
+                                        <td>
+                                            {% if form.instance.kind == 'material' %}
+                                                <div class="d-flex align-items-center gap-1 flex-wrap">
+                                                    {{ form.selected_option }}
+                                                    {% if form.instance.cost_item_id %}
+                                                        <button
+                                                            type="button"
+                                                            class="btn btn-sm btn-outline-secondary js-new-option"
+                                                            data-create-url="{% url 'cost_item_option_create' cost_item_id=form.instance.cost_item_id %}"
+                                                        >Новая</button>
+                                                        <button
+                                                            type="button"
+                                                            class="btn btn-sm btn-outline-primary js-edit-option"
+                                                            data-update-template="{% url 'cost_item_option_update' option_id=0 %}"
+                                                        >Редактировать</button>
+                                                    {% endif %}
+                                                </div>
+                                            {% else %}
+                                                <span class="text-muted">—</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ form.quantity }}</td>
+                                        <td>{{ form.unit_price }}</td>
+                                        <td class="js-line-sum">{{ form.instance.line_total|floatformat:2|intcomma }}</td>
+                                    </tr>
+                                    {% if form.non_field_errors %}
+                                        <tr><td colspan="7" class="text-danger small">{{ form.non_field_errors }}</td></tr>
+                                    {% endif %}
+                                    {% if form.errors %}
+                                        <tr>
+                                            <td colspan="7" class="text-danger small">
+                                                {% for field in form %}
+                                                    {% for err in field.errors %}
+                                                        <div>{{ err }}</div>
+                                                    {% endfor %}
+                                                {% endfor %}
+                                            </td>
+                                        </tr>
+                                    {% endif %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% if tab.formset.non_form_errors %}
+                        <div class="text-danger small">{{ tab.formset.non_form_errors }}</div>
+                    {% endif %}
+
+                    <button type="submit" class="btn btn-primary mt-2">Сохранить вкладку</button>
+                </form>
+            </div>
+        {% endfor %}
+        {% if not bathroom_tabs %}
+            <div class="text-muted">
+                Не удалось построить вкладки санузлов. Вернитесь в смету, укажите `D37` больше нуля и сохраните конфигурацию.
+            </div>
+        {% endif %}
+    </div>
+
+    {% include 'includes/cost_item_option_modal.html' %}
+
+    <script>
+        (function () {
+            function parseNum(v) {
+                var n = parseFloat(String(v || '').replace(',', '.'));
+                return Number.isFinite(n) ? n : 0;
+            }
+            function formatMoney(n) {
+                return n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            }
+            function updateRowSum(tr) {
+                var qtyInp = tr.querySelector('input[name$="-quantity"]');
+                var priceInp = tr.querySelector('input[name$="-unit_price"]');
+                var sumCell = tr.querySelector('.js-line-sum');
+                if (!sumCell || !qtyInp || !priceInp) return;
+                var q = parseNum(qtyInp.value);
+                var p = parseNum(priceInp.value);
+                sumCell.textContent = formatMoney(q * p);
+            }
+            function isRowIncluded(tr) {
+                var includeEl = tr.querySelector('input[name$="-is_included"]');
+                if (!includeEl) return true;
+                return !!includeEl.checked;
+            }
+            function rowSumValue(tr) {
+                if (!isRowIncluded(tr)) return 0;
+                var qtyInp = tr.querySelector('input[name$="-quantity"]');
+                var priceInp = tr.querySelector('input[name$="-unit_price"]');
+                if (!qtyInp || !priceInp) return 0;
+                return parseNum(qtyInp.value) * parseNum(priceInp.value);
+            }
+            function recalcPaneTotals(paneEl) {
+                if (!paneEl) return { material: 0, work: 0, subtotal: 0 };
+                var material = 0;
+                var work = 0;
+                paneEl.querySelectorAll('tbody tr[data-kind]').forEach(function (tr) {
+                    var kind = tr.getAttribute('data-kind');
+                    var sum = rowSumValue(tr);
+                    if (kind === 'material') material += sum;
+                    else if (kind === 'work') work += sum;
+                });
+                var subtotal = material + work;
+                var matEl = paneEl.querySelector('.js-tab-material-total');
+                var workEl = paneEl.querySelector('.js-tab-work-total');
+                var subEl = paneEl.querySelector('.js-tab-subtotal');
+                if (matEl) matEl.textContent = formatMoney(material);
+                if (workEl) workEl.textContent = formatMoney(work);
+                if (subEl) subEl.textContent = formatMoney(subtotal);
+                return { material: material, work: work, subtotal: subtotal };
+            }
+            function recalcAllTotals() {
+                var materialAll = 0;
+                var workAll = 0;
+                document.querySelectorAll('.tab-pane[id^="tab-pane-"]').forEach(function (pane) {
+                    var totals = recalcPaneTotals(pane);
+                    materialAll += totals.material;
+                    workAll += totals.work;
+                });
+                var grandAll = materialAll + workAll;
+                var matAllEl = document.getElementById('js-all-material-total');
+                var workAllEl = document.getElementById('js-all-work-total');
+                var grandAllEl = document.getElementById('js-all-grand-total');
+                if (matAllEl) matAllEl.textContent = formatMoney(materialAll);
+                if (workAllEl) workAllEl.textContent = formatMoney(workAll);
+                if (grandAllEl) grandAllEl.textContent = formatMoney(grandAll);
+            }
+            function getSelectedOptionData(selectEl) {
+                if (!selectEl) return null;
+                var opt = selectEl.options[selectEl.selectedIndex];
+                if (!opt || !opt.value) return null;
+                return {
+                    id: opt.value,
+                    name_ru: opt.textContent || '',
+                    price: opt.getAttribute('data-price') || '',
+                    unit: opt.getAttribute('data-unit') || '',
+                };
+            }
+            function applySelectedOptionPrice(tr, selectEl) {
+                var data = getSelectedOptionData(selectEl);
+                var inp = tr.querySelector('input[name$="-unit_price"]');
+                if (!inp) return;
+                if (data && data.price !== '') {
+                    inp.value = String(data.price).replace(',', '.');
+                    inp.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            }
+            function refreshEditButtonState(tr) {
+                if (!tr) return;
+                var btn = tr.querySelector('.js-edit-option');
+                var selectEl = tr.querySelector('select.bathroom-option-select');
+                if (!btn || !selectEl) return;
+                var data = getSelectedOptionData(selectEl);
+                btn.disabled = !data;
+            }
+            function syncUnitPriceFromModelOnLoad(tr) {
+                if (tr.getAttribute('data-kind') !== 'material') return;
+                var sel = tr.querySelector('select.bathroom-option-select');
+                var inp = tr.querySelector('input[name$="-unit_price"]');
+                if (!sel || !inp) return;
+                var opt = sel.options[sel.selectedIndex];
+                if (!opt || !opt.value) return;
+                var dp = opt.getAttribute('data-price');
+                if (dp === null || dp === '') return;
+                var cur = parseNum(inp.value);
+                var modelPrice = parseNum(String(dp).replace(',', '.'));
+                if (cur === 0 && modelPrice > 0) {
+                    inp.value = String(dp).replace(',', '.');
+                    inp.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            }
+            var tabContent = document.querySelector('.tab-content');
+            if (tabContent) {
+                tabContent.addEventListener('change', function (e) {
+                    var tr = e.target.closest('tr');
+                    if (!tr) return;
+                    if (e.target.matches && e.target.matches('select.bathroom-option-select')) {
+                        applySelectedOptionPrice(tr, e.target);
+                        refreshEditButtonState(tr);
+                        updateRowSum(tr);
+                    }
+                    if (e.target.matches && e.target.matches('input[name$="-is_included"]')) {
+                        updateRowSum(tr);
+                    }
+                    recalcAllTotals();
+                });
+                tabContent.addEventListener('input', function (e) {
+                    var tr = e.target.closest('tr');
+                    if (!tr) return;
+                    if (e.target.matches && e.target.matches('input[name$="-quantity"], input[name$="-unit_price"]')) {
+                        updateRowSum(tr);
+                        recalcAllTotals();
+                    }
+                });
+                // Fallback direct bindings: protects from edge cases where delegated events
+                // do not fire due to browser/table DOM quirks.
+                tabContent.querySelectorAll('select.bathroom-option-select').forEach(function (sel) {
+                    sel.addEventListener('change', function () {
+                        var tr = sel.closest('tr');
+                        if (!tr) return;
+                        applySelectedOptionPrice(tr, sel);
+                        refreshEditButtonState(tr);
+                        updateRowSum(tr);
+                        recalcAllTotals();
+                    });
+                });
+                tabContent.querySelectorAll('input[name$="-is_included"]').forEach(function (inp) {
+                    inp.addEventListener('change', function () {
+                        var tr = inp.closest('tr');
+                        if (!tr) return;
+                        updateRowSum(tr);
+                        recalcAllTotals();
+                    });
+                });
+                tabContent.querySelectorAll('input[name$="-quantity"], input[name$="-unit_price"]').forEach(function (inp) {
+                    inp.addEventListener('change', function () {
+                        var tr = inp.closest('tr');
+                        if (!tr) return;
+                        updateRowSum(tr);
+                        recalcAllTotals();
+                    });
+                });
+                tabContent.querySelectorAll('tbody tr').forEach(function (tr) {
+                    syncUnitPriceFromModelOnLoad(tr);
+                    if (tr.querySelector('.js-line-sum')) updateRowSum(tr);
+                    refreshEditButtonState(tr);
+                });
+                recalcAllTotals();
+            }
+
+            var targetSelectForModal = null;
+            var modalMode = 'create';
+            var modalOptionId = '';
+            function openOptionModal(mode, buttonEl) {
+                var row = buttonEl.closest('tr');
+                targetSelectForModal = row ? row.querySelector('select.bathroom-option-select') : null;
+                var err = document.getElementById('cost-item-option-modal-error');
+                var form = document.getElementById('cost-item-option-modal-form');
+                var modalEl = document.getElementById('costItemOptionModal');
+                var titleEl = document.getElementById('costItemOptionModalLabel');
+                if (!targetSelectForModal || !form || !modalEl) return;
+                form.reset();
+                modalMode = mode;
+                modalOptionId = '';
+                if (mode === 'create') {
+                    modalEl.dataset.createUrl = buttonEl.getAttribute('data-create-url') || '';
+                    modalEl.dataset.updateTemplate = '';
+                    if (titleEl) titleEl.textContent = 'Новая модель';
+                } else {
+                    var data = getSelectedOptionData(targetSelectForModal);
+                    if (!data) return;
+                    var tpl = buttonEl.getAttribute('data-update-template') || '';
+                    modalEl.dataset.updateTemplate = tpl;
+                    modalOptionId = data.id;
+                    if (titleEl) titleEl.textContent = 'Редактировать модель';
+                    form.elements['name_ru'].value = data.name_ru || '';
+                    form.elements['price'].value = data.price || '0';
+                    form.elements['unit'].value = data.unit || '';
+                    var selected = targetSelectForModal.options[targetSelectForModal.selectedIndex];
+                    form.elements['manufacturer'].value = selected ? (selected.getAttribute('data-manufacturer') || '') : '';
+                    form.elements['article'].value = selected ? (selected.getAttribute('data-article') || '') : '';
+                    form.elements['country'].value = selected ? (selected.getAttribute('data-country') || '') : '';
+                    form.elements['description'].value = selected ? (selected.getAttribute('data-description') || '') : '';
+                }
+                if (err) {
+                    err.classList.add('d-none');
+                    err.textContent = '';
+                }
+                if (!window.bootstrap) return;
+                var modal = new window.bootstrap.Modal(modalEl);
+                modal.show();
+            }
+            document.querySelectorAll('.js-new-option').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    openOptionModal('create', btn);
+                });
+            });
+            document.querySelectorAll('.js-edit-option').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    openOptionModal('edit', btn);
+                });
+            });
+
+            var submitBtn = document.getElementById('cost-item-option-modal-submit');
+            if (submitBtn) {
+                submitBtn.addEventListener('click', function () {
+                    var form = document.getElementById('cost-item-option-modal-form');
+                    var errBox = document.getElementById('cost-item-option-modal-error');
+                    var modalEl = document.getElementById('costItemOptionModal');
+                    var url = '';
+                    if (modalEl) {
+                        if (modalMode === 'edit') {
+                            var tpl = modalEl.dataset.updateTemplate || '';
+                            url = tpl.replace('/0/', '/' + modalOptionId + '/');
+                        } else {
+                            url = modalEl.dataset.createUrl || '';
+                        }
+                    }
+                    if (!form || !targetSelectForModal || !url) return;
+                    var fd = new FormData(form);
+                    fetch(url, {
+                        method: 'POST',
+                        body: fd,
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                    })
+                        .then(function (r) {
+                            return r.json().then(function (data) {
+                                return { ok: r.ok, status: r.status, data: data };
+                            });
+                        })
+                        .then(function (res) {
+                            if (!res.ok || !res.data.ok) {
+                                var msg = 'Не удалось сохранить';
+                                if (res.data && res.data.errors) {
+                                    msg = JSON.stringify(res.data.errors);
+                                }
+                                if (errBox) {
+                                    errBox.textContent = msg;
+                                    errBox.classList.remove('d-none');
+                                }
+                                return;
+                            }
+                            var opt = res.data.option;
+                            var targetValue = String(opt.id);
+                            var el = targetSelectForModal.querySelector('option[value="' + targetValue + '"]');
+                            if (!el) {
+                                el = document.createElement('option');
+                                el.value = targetValue;
+                                targetSelectForModal.appendChild(el);
+                            }
+                            el.textContent = opt.name_ru;
+                            el.setAttribute('data-price', opt.price);
+                            el.setAttribute('data-unit', opt.unit || '');
+                            el.setAttribute('data-manufacturer', opt.manufacturer || '');
+                            el.setAttribute('data-article', opt.article || '');
+                            el.setAttribute('data-country', opt.country || '');
+                            el.setAttribute('data-description', opt.description || '');
+                            targetSelectForModal.value = String(opt.id);
+                            targetSelectForModal.dispatchEvent(new Event('change', { bubbles: true }));
+                            recalcAllTotals();
+                            var modalEl = document.getElementById('costItemOptionModal');
+                            if (modalEl && window.bootstrap) {
+                                var modal = window.bootstrap.Modal.getInstance(modalEl);
+                                if (modal) modal.hide();
+                            }
+                        })
+                        .catch(function () {
+                            if (errBox) {
+                                errBox.textContent = 'Ошибка сети';
+                                errBox.classList.remove('d-none');
+                            }
+                        });
+                });
+            }
+
+            var saveAllBtn = document.getElementById('js-save-bathrooms-and-return');
+            if (saveAllBtn) {
+                saveAllBtn.addEventListener('click', async function () {
+                    var forms = Array.from(document.querySelectorAll('.tab-pane form[action*="/bathrooms/"][action$="/save/"]'));
+                    if (!forms.length) {
+                        window.location.href = saveAllBtn.getAttribute('data-return-url') || '';
+                        return;
+                    }
+                    var originalText = saveAllBtn.textContent;
+                    saveAllBtn.disabled = true;
+                    saveAllBtn.textContent = 'Сохраняем...';
+                    try {
+                        for (var i = 0; i < forms.length; i++) {
+                            var form = forms[i];
+                            var response = await fetch(form.action, {
+                                method: 'POST',
+                                body: new FormData(form),
+                                credentials: 'same-origin',
+                            });
+                            if (!response.ok) {
+                                throw new Error('save_failed_' + (i + 1));
+                            }
+                        }
+                        window.location.href = saveAllBtn.getAttribute('data-return-url') || '';
+                    } catch (e) {
+                        alert('Не удалось сохранить все вкладки санузлов. Проверьте заполнение полей и попробуйте снова.');
+                        saveAllBtn.disabled = false;
+                        saveAllBtn.textContent = originalText;
+                    }
+                });
+            }
+        })();
+    </script>
+{% endblock %}

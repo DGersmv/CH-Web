@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="mb-0">Дополнительные опции — {{ deal.project_code }}</h1>
+            <small class="text-muted">Draft v{{ draft_version.version_number }}</small>
+        </div>
+        <a href="{% url 'deal_cost_summary_page' deal.id %}" class="btn btn-outline-secondary">Назад к смете</a>
+    </div>
+
+    {% if saved %}
+        <div class="alert alert-success py-2">Дополнительные опции сохранены, смета пересчитана.</div>
+    {% endif %}
+
+    <div class="card mb-3">
+        <div class="card-header">Добавить свою опцию</div>
+        <div class="card-body">
+            <form method="post" action="{% url 'deal_additional_options_create' deal.id %}" class="row g-2 align-items-end">
+                {% csrf_token %}
+                <div class="col-md-5">
+                    <label class="form-label">{{ create_form.name.label }}</label>
+                    {{ create_form.name }}
+                    {% if create_form.name.errors %}<div class="text-danger small">{{ create_form.name.errors|join:", " }}</div>{% endif %}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">{{ create_form.unit.label }}</label>
+                    {{ create_form.unit }}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">{{ create_form.quantity.label }}</label>
+                    {{ create_form.quantity }}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">{{ create_form.unit_price.label }}</label>
+                    {{ create_form.unit_price }}
+                </div>
+                <div class="col-md-1">
+                    <div class="form-check mb-2">
+                        {{ create_form.is_included }} <label class="form-check-label">{{ create_form.is_included.label }}</label>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-outline-primary btn-sm">Добавить опцию</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <div class="row g-2 small">
+                <div class="col-md-4"><strong>Материалы:</strong> {{ material_total|floatformat:2|intcomma }} ₽</div>
+                <div class="col-md-4"><strong>Работа:</strong> {{ work_total|floatformat:2|intcomma }} ₽</div>
+                <div class="col-md-4"><strong>Итого:</strong> {{ grand_total|floatformat:2|intcomma }} ₽</div>
+            </div>
+        </div>
+    </div>
+
+    <form method="post" action="{% url 'deal_additional_options_save' deal.id %}">
+        {% csrf_token %}
+        {{ formset.management_form }}
+        <div class="d-none">
+            {% for form in formset %}
+                {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+            {% endfor %}
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 3rem;">Вкл.</th>
+                        <th>Наименование</th>
+                        <th style="width: 8rem;">Ед.</th>
+                        <th style="width: 8rem;">Кол-во</th>
+                        <th style="width: 10rem;">Цена, ₽</th>
+                        <th style="width: 10rem;">Сумма, ₽</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for form in formset %}
+                        <tr>
+                            <td class="text-center">{{ form.is_included }}</td>
+                            <td>{{ form.instance.name_snapshot }}</td>
+                            <td>
+                                {{ form.instance.unit_ru }}
+                            </td>
+                            <td>{{ form.quantity }}</td>
+                            <td>{{ form.unit_price }}</td>
+                            <td>{{ form.instance.line_total|floatformat:2|intcomma }}</td>
+                        </tr>
+                        {% if form.errors %}
+                            <tr>
+                                <td colspan="6" class="text-danger small">
+                                    {% for field in form %}
+                                        {% for err in field.errors %}
+                                            <div>{{ err }}</div>
+                                        {% endfor %}
+                                    {% endfor %}
+                                </td>
+                            </tr>
+                        {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <button type="submit" class="btn btn-primary">Сохранить дополнительные опции</button>
+    </form>
+{% endblock %}
+

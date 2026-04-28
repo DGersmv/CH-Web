@@ -21,15 +21,21 @@ from django.urls import include, path
 
 from deals.api_views import PluginProjectVersionCreateApi
 from .api_views import DirectMessageListCreateApi, DirectMessageReadApi, NotificationListApi, NotificationReadAllApi
+from catalog.views import create_cost_item_option, update_cost_item_option
 from deals.views import (
     archive_project_file,
+    bathrooms_page,
+    additional_options_page,
     bulk_project_file_action,
     cost_summary_page,
     create_dashboard_lead,
     DealCreateView,
     claim_lead,
+    create_additional_option,
     open_project_file,
     recalc_configurator,
+    save_bathroom_tab,
+    save_additional_options,
     save_configurator_draft,
     update_deal_cost_summary,
     update_deal_module_count,
@@ -71,6 +77,17 @@ urlpatterns = [
     path('deals/<int:deal_id>/config/recalc/', recalc_configurator, name='config_recalc'),
     path('deals/<int:deal_id>/config/save/', save_configurator_draft, name='config_save'),
     path('deals/<int:deal_id>/cost-summary/', cost_summary_page, name='deal_cost_summary_page'),
+    path('deals/<int:deal_id>/bathrooms/', bathrooms_page, name='deal_bathrooms_page'),
+    path('deals/<int:deal_id>/bathrooms/<int:bathroom_id>/save/', save_bathroom_tab, name='deal_bathroom_tab_save'),
+    path('deals/<int:deal_id>/additional-options/', additional_options_page, name='deal_additional_options_page'),
+    path('deals/<int:deal_id>/additional-options/save/', save_additional_options, name='deal_additional_options_save'),
+    path('deals/<int:deal_id>/additional-options/create/', create_additional_option, name='deal_additional_options_create'),
+    path(
+        'catalog/cost-items/<int:cost_item_id>/options/create/',
+        create_cost_item_option,
+        name='cost_item_option_create',
+    ),
+    path('catalog/options/<int:option_id>/update/', update_cost_item_option, name='cost_item_option_update'),
     path('deals/<int:deal_id>/cost-summary/update/', update_deal_cost_summary, name='deal_cost_summary_update'),
     path('deals/<int:deal_id>/files/upload/', upload_project_file, name='deal_file_upload'),
     path('deals/<int:deal_id>/files/<str:source>/bulk/', bulk_project_file_action, name='deal_file_bulk_action'),

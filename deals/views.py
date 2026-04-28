@@ -8,6 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.generic.edit import FormView
@@ -16,10 +17,29 @@ from django.utils import timezone
 from accounts.permissions import can_access_file_source, is_file_only_role
 from clients.models import Client
 
-from .forms import DashboardLeadForm, DealConfiguratorForm, DealCreateForm, DealFileUploadForm
-from .models import ChangeLog, Deal, ProjectFile, build_project_code_from_parts, normalize_project_code
+from .forms import (
+    AdditionalOptionCreateForm,
+    AdditionalOptionLineFormSet,
+    BathroomLineFormSet,
+    DashboardLeadForm,
+    DealConfiguratorForm,
+    DealCreateForm,
+    DealFileUploadForm,
+)
+from .models import ChangeLog, Deal, DealBathroom, ProjectFile, build_project_code_from_parts, normalize_project_code
+from .services.bathrooms import (
+    bathroom_totals,
+    bathrooms_button_enabled,
+    bathrooms_count_from_config,
+    bathrooms_totals,
+    ensure_bathrooms,
+    get_template_section,
+)
+from .services.additional_options import additional_options_rows, additional_options_totals, ensure_additional_option_lines
 from .services.storage_paths import ensure_deal_dirs, get_deal_root, get_files_root
 from .services.calculation_engine import CALC_SCHEMA_VERSION, calculate_config
+
+from catalog.forms import COST_ITEM_UNIT_CHOICES_RU
 
 
 @login_required
@@ -579,6 +599,35 @@ def _parse_decimal(raw_value):
     return value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
+def _bathrooms_button_enabled_for_form(form, frozen_data):
+    """Кнопка активна по текущему значению D37 в форме (даже до сохранения)."""
+    raw_count = None
+    if getattr(form, 'is_bound', False):
+        raw_count = form.data.get(form.add_prefix('bathrooms_count'))
+    else:
+        raw_count = form.initial.get('bathrooms_count')
+    try:
+        current_count = int(Decimal(str(raw_count).replace(',', '.')))
+    except (InvalidOperation, ValueError, TypeError):
+        current_count = 0
+    if current_count >= 1:
+        return True
+    return bathrooms_button_enabled(frozen_data or {})
+
+
+def _recalc_draft_calculation(deal, draft):
+    """Пересчитать смету в draft по сохранённым config_inputs и строкам санузлов."""
+    inputs = (draft.frozen_data or {}).get('config_inputs')
+    if not inputs:
+        return
+    calc = calculate_config(inputs, margin_percent=deal.margin_percent, version=draft)
+    frozen = draft.frozen_data or {}
+    frozen['calculation'] = _json_ready(calc)
+    frozen['saved_at'] = timezone.now().isoformat()
+    draft.frozen_data = frozen
+    draft.save(update_fields=['frozen_data'])
+
+
 @login_required
 @require_POST
 def update_deal_cost_summary(request, deal_id):
@@ -656,23 +705,31 @@ def cost_summary_page(request, deal_id):
         action = request.POST.get('action', '').strip()
         if action == 'upload_archicad':
             config_form = DealConfiguratorForm(initial=initial)
-            calc_result = frozen.get('calculation') or calculate_config(config_form.initial, margin_percent=deal.margin_percent)
+            calc_result = frozen.get('calculation') or calculate_config(
+                config_form.initial, margin_percent=deal.margin_percent, version=draft
+            )
             archicad_notice = 'Кнопка-заглушка: интеграция Archicad будет добавлена следующим шагом.'
         else:
             config_form = DealConfiguratorForm(request.POST)
             calc_result = None
             if config_form.is_valid():
-                calc_result = calculate_config(config_form.cleaned_data, margin_percent=deal.margin_percent)
+                new_inputs = config_form.cleaned_data
+                calc_result = calculate_config(new_inputs, margin_percent=deal.margin_percent, version=draft)
                 if action == 'save':
                     old_inputs = (draft.frozen_data or {}).get('config_inputs', {})
-                    new_inputs = config_form.cleaned_data
                     changed_keys = [key for key in new_inputs.keys() if str(old_inputs.get(key, '')) != str(new_inputs.get(key, ''))]
                     draft.frozen_data = {
                         'calc_schema_version': CALC_SCHEMA_VERSION,
                         'config_inputs': _json_ready(new_inputs),
-                        'calculation': _json_ready(calc_result),
                         'saved_at': timezone.now().isoformat(),
                     }
+                    draft.save(update_fields=['frozen_data'])
+                    ensure_bathrooms(draft, bathrooms_count_from_config(draft.frozen_data))
+                    calc_result = calculate_config(new_inputs, margin_percent=deal.margin_percent, version=draft)
+                    fd = draft.frozen_data or {}
+                    fd['calculation'] = _json_ready(calc_result)
+                    fd['saved_at'] = timezone.now().isoformat()
+                    draft.frozen_data = fd
                     draft.save(update_fields=['frozen_data'])
                     for key in changed_keys:
                         ChangeLog.objects.create(
@@ -689,8 +746,9 @@ def cost_summary_page(request, deal_id):
         config_form = DealConfiguratorForm(initial=initial)
         calc_result = frozen.get('calculation')
         if calc_result is None:
-            calc_result = calculate_config(config_form.initial, margin_percent=deal.margin_percent)
+            calc_result = calculate_config(config_form.initial, margin_percent=deal.margin_percent, version=draft)
 
+    bathroom_material_total, bathroom_work_total = bathrooms_totals(draft)
     return render(
         request,
         'deal_cost_summary.html',
@@ -701,6 +759,10 @@ def cost_summary_page(request, deal_id):
             'calc_result': calc_result,
             'save_success': save_success,
             'archicad_notice': archicad_notice,
+            'bathrooms_button_enabled': _bathrooms_button_enabled_for_form(config_form, draft.frozen_data or {}),
+            'bathroom_material_total': bathroom_material_total,
+            'bathroom_work_total': bathroom_work_total,
+            'bathroom_grand_total': bathroom_material_total + bathroom_work_total,
         },
     )
 
@@ -713,8 +775,11 @@ def recalc_configurator(request, deal_id):
     deal = get_object_or_404(Deal, pk=deal_id)
     form = DealConfiguratorForm(request.POST)
     calc_result = None
+    draft = _get_or_create_draft_version(deal, request.user)
     if form.is_valid():
-        calc_result = calculate_config(form.cleaned_data, margin_percent=deal.margin_percent)
+        ensure_bathrooms(draft, bathrooms_count_from_config({'config_inputs': form.cleaned_data}))
+        calc_result = calculate_config(form.cleaned_data, margin_percent=deal.margin_percent, version=draft)
+    bathroom_material_total, bathroom_work_total = bathrooms_totals(draft)
     return render(
         request,
         'includes/configurator_block.html',
@@ -722,8 +787,12 @@ def recalc_configurator(request, deal_id):
             'deal': deal,
             'config_form': form,
             'calc_result': calc_result,
-            'draft_version': _get_or_create_draft_version(deal, request.user),
+            'draft_version': draft,
             'save_success': False,
+            'bathrooms_button_enabled': _bathrooms_button_enabled_for_form(form, draft.frozen_data or {}),
+            'bathroom_material_total': bathroom_material_total,
+            'bathroom_work_total': bathroom_work_total,
+            'bathroom_grand_total': bathroom_material_total + bathroom_work_total,
         },
         status=200 if form.is_valid() else 400,
     )
@@ -736,6 +805,7 @@ def save_configurator_draft(request, deal_id):
         return HttpResponseForbidden('Not allowed')
     deal = get_object_or_404(Deal, pk=deal_id)
     form = DealConfiguratorForm(request.POST)
+    draft = _get_or_create_draft_version(deal, request.user)
     if not form.is_valid():
         return render(
             request,
@@ -744,24 +814,29 @@ def save_configurator_draft(request, deal_id):
                 'deal': deal,
                 'config_form': form,
                 'calc_result': None,
-                'draft_version': _get_or_create_draft_version(deal, request.user),
+                'draft_version': draft,
                 'save_success': False,
+                'bathrooms_button_enabled': _bathrooms_button_enabled_for_form(form, draft.frozen_data or {}),
             },
             status=400,
         )
 
-    calc_result = calculate_config(form.cleaned_data, margin_percent=deal.margin_percent)
-    draft = _get_or_create_draft_version(deal, request.user)
-    old_inputs = (draft.frozen_data or {}).get('config_inputs', {})
     new_inputs = form.cleaned_data
+    old_inputs = (draft.frozen_data or {}).get('config_inputs', {})
     changed_keys = [key for key in new_inputs.keys() if str(old_inputs.get(key, '')) != str(new_inputs.get(key, ''))]
 
     draft.frozen_data = {
         'calc_schema_version': CALC_SCHEMA_VERSION,
         'config_inputs': _json_ready(new_inputs),
-        'calculation': _json_ready(calc_result),
         'saved_at': timezone.now().isoformat(),
     }
+    draft.save(update_fields=['frozen_data'])
+    ensure_bathrooms(draft, bathrooms_count_from_config(draft.frozen_data))
+    calc_result = calculate_config(new_inputs, margin_percent=deal.margin_percent, version=draft)
+    fd = draft.frozen_data or {}
+    fd['calculation'] = _json_ready(calc_result)
+    fd['saved_at'] = timezone.now().isoformat()
+    draft.frozen_data = fd
     draft.save(update_fields=['frozen_data'])
 
     for key in changed_keys:
@@ -773,6 +848,7 @@ def save_configurator_draft(request, deal_id):
             new_value={'value': _json_ready(new_inputs.get(key))},
         )
 
+    bathroom_material_total, bathroom_work_total = bathrooms_totals(draft)
     return render(
         request,
         'includes/configurator_block.html',
@@ -782,8 +858,204 @@ def save_configurator_draft(request, deal_id):
             'calc_result': calc_result,
             'draft_version': draft,
             'save_success': True,
+            'bathrooms_button_enabled': _bathrooms_button_enabled_for_form(form, draft.frozen_data or {}),
+            'bathroom_material_total': bathroom_material_total,
+            'bathroom_work_total': bathroom_work_total,
+            'bathroom_grand_total': bathroom_material_total + bathroom_work_total,
         },
     )
+
+
+def _build_bathroom_tabs_context(deal, draft, count_override=None):
+    """Контекст страницы вкладок санузлов."""
+    count = count_override if count_override is not None else bathrooms_count_from_config(draft.frozen_data or {})
+    ensure_bathrooms(draft, count)
+    bathrooms = list(DealBathroom.objects.filter(project_version=draft).order_by('index'))
+    formsets_by_id = {br.id: BathroomLineFormSet(instance=br) for br in bathrooms}
+    bathroom_tabs = []
+    for br in bathrooms:
+        material_total, work_total, subtotal = bathroom_totals(br)
+        bathroom_tabs.append(
+            {
+                'bathroom': br,
+                'formset': formsets_by_id[br.id],
+                'material_total': material_total,
+                'work_total': work_total,
+                'subtotal': subtotal,
+            }
+        )
+    mat_tot, work_tot = bathrooms_totals(draft)
+    return {
+        'deal': deal,
+        'draft_version': draft,
+        'bathrooms': bathrooms,
+        'bathroom_tabs': bathroom_tabs,
+        'formsets_by_id': formsets_by_id,
+        'template_section': get_template_section(),
+        'material_total_all': mat_tot,
+        'work_total_all': work_tot,
+        'grand_total_all': mat_tot + work_tot,
+        'option_unit_choices_ru': COST_ITEM_UNIT_CHOICES_RU,
+    }
+
+
+def _build_additional_options_context(deal, draft):
+    ensure_additional_option_lines(draft)
+    formset = AdditionalOptionLineFormSet(instance=draft)
+    material_total, work_total = additional_options_totals(draft)
+    return {
+        'deal': deal,
+        'draft_version': draft,
+        'formset': formset,
+        'create_form': AdditionalOptionCreateForm(),
+        'material_total': material_total,
+        'work_total': work_total,
+        'grand_total': material_total + work_total,
+    }
+
+
+@login_required
+def bathrooms_page(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    draft = _get_or_create_draft_version(deal, request.user)
+    count = bathrooms_count_from_config(draft.frozen_data or {})
+    raw_count_qs = request.GET.get('count')
+    if raw_count_qs not in (None, ''):
+        try:
+            count = int(Decimal(str(raw_count_qs)))
+        except (InvalidOperation, ValueError, TypeError):
+            pass
+    if count < 1:
+        _draft, initial = _draft_config_initial(deal, request.user)
+        try:
+            count = int(Decimal(str(initial.get('bathrooms_count', 0))))
+        except (InvalidOperation, ValueError, TypeError):
+            count = 0
+    if count < 1:
+        return redirect('deal_cost_summary_page', deal_id=deal.id)
+
+    frozen = draft.frozen_data or {}
+    config_inputs = dict(frozen.get('config_inputs') or {})
+    if str(config_inputs.get('bathrooms_count')) != str(count):
+        config_inputs['bathrooms_count'] = count
+        frozen['config_inputs'] = config_inputs
+        draft.frozen_data = frozen
+        draft.save(update_fields=['frozen_data'])
+
+    ensure_bathrooms(draft, count)
+    ctx = _build_bathroom_tabs_context(deal, draft, count_override=count)
+    return render(request, 'deal_bathrooms.html', ctx)
+
+
+@login_required
+@require_POST
+def save_bathroom_tab(request, deal_id, bathroom_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    draft = _get_or_create_draft_version(deal, request.user)
+    bathroom = DealBathroom.objects.filter(pk=bathroom_id, deal_id=deal.id, project_version=draft).first()
+    if bathroom is None:
+        # Пользователь мог отправить "протухшую" вкладку (id из старой страницы после изменения draft).
+        count = bathrooms_count_from_config(draft.frozen_data or {})
+        if count < 1:
+            _d, initial = _draft_config_initial(deal, request.user)
+            try:
+                count = int(Decimal(str(initial.get('bathrooms_count', 0))))
+            except (InvalidOperation, ValueError, TypeError):
+                count = 0
+        if count > 0:
+            ensure_bathrooms(draft, count)
+        return redirect(reverse('deal_bathrooms_page', kwargs={'deal_id': deal.id}) + '?stale=1')
+    formset = BathroomLineFormSet(request.POST, instance=bathroom)
+    if formset.is_valid():
+        instances = formset.save(commit=False)
+        for form in formset.forms:
+            if not form.cleaned_data:
+                continue
+            obj = form.instance
+            if 'selected_option' in form.changed_data and obj.selected_option_id:
+                opt = obj.selected_option
+                if opt is not None and opt.price > Decimal('0'):
+                    obj.unit_price = opt.price
+        for obj in instances:
+            obj.save()
+        formset.save_m2m()
+        _recalc_draft_calculation(deal, draft)
+        return redirect(reverse('deal_bathrooms_page', kwargs={'deal_id': deal.id}) + f'?saved={bathroom.id}')
+
+    ctx = _build_bathroom_tabs_context(deal, draft)
+    ctx['formsets_by_id'][bathroom.id] = formset
+    ctx['bathroom_tabs'] = [
+        {'bathroom': br, 'formset': ctx['formsets_by_id'][br.id]} for br in ctx['bathrooms']
+    ]
+    ctx['form_error_bathroom_id'] = bathroom.id
+    return render(request, 'deal_bathrooms.html', ctx, status=400)
+
+
+@login_required
+def additional_options_page(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    draft = _get_or_create_draft_version(deal, request.user)
+    ctx = _build_additional_options_context(deal, draft)
+    if request.GET.get('saved'):
+        ctx['saved'] = True
+    return render(request, 'deal_additional_options.html', ctx)
+
+
+@login_required
+@require_POST
+def save_additional_options(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    draft = _get_or_create_draft_version(deal, request.user)
+    ensure_additional_option_lines(draft)
+    formset = AdditionalOptionLineFormSet(request.POST, instance=draft)
+    if formset.is_valid():
+        formset.save()
+        _recalc_draft_calculation(deal, draft)
+        return redirect(reverse('deal_additional_options_page', kwargs={'deal_id': deal.id}) + '?saved=1')
+    ctx = _build_additional_options_context(deal, draft)
+    ctx['formset'] = formset
+    return render(request, 'deal_additional_options.html', ctx, status=400)
+
+
+@login_required
+@require_POST
+def create_additional_option(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    draft = _get_or_create_draft_version(deal, request.user)
+    ensure_additional_option_lines(draft)
+    form = AdditionalOptionCreateForm(request.POST)
+    if form.is_valid():
+        from .models import DealAdditionalOptionLine
+
+        max_so = (
+            DealAdditionalOptionLine.objects.filter(project_version=draft).order_by('-sort_order').values_list('sort_order', flat=True).first() or 0
+        )
+        DealAdditionalOptionLine.objects.create(
+            project_version=draft,
+            cost_item_id=None,
+            name_snapshot=form.cleaned_data['name'],
+            kind='material',
+            is_included=form.cleaned_data['is_included'],
+            quantity=form.cleaned_data['quantity'],
+            unit_price=form.cleaned_data['unit_price'],
+            unit_snapshot=form.cleaned_data['unit'],
+            sort_order=max_so + 10,
+        )
+        _recalc_draft_calculation(deal, draft)
+        return redirect(reverse('deal_additional_options_page', kwargs={'deal_id': deal.id}) + '?saved=1')
+    ctx = _build_additional_options_context(deal, draft)
+    ctx['create_form'] = form
+    return render(request, 'deal_additional_options.html', ctx, status=400)
 
 
 @login_required

@@ -1,10 +1,64 @@
+from decimal import Decimal, InvalidOperation
+
 from django import forms
+from django.forms import inlineformset_factory
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from clients.models import Client
 
-from .models import Deal, build_project_code_from_parts, normalize_project_code
+from catalog.models import CostItemOption
+
+from .models import (
+    Deal,
+    DealAdditionalOptionLine,
+    DealBathroom,
+    DealBathroomLine,
+    ProjectVersion,
+    build_project_code_from_parts,
+    normalize_project_code,
+)
+
+
+class OptionWithPriceSelect(forms.Select):
+    """Select модели с data-price / data-unit для подстановки цены в строке санузла."""
+
+    def __init__(self, attrs=None):
+        super().__init__(attrs=attrs)
+        self.price_map = {}
+        self.unit_map = {}
+        self.manufacturer_map = {}
+        self.article_map = {}
+        self.country_map = {}
+        self.description_map = {}
+
+    def attach_option_meta(self, queryset):
+        self.price_map = {str(o.pk): str(o.price) for o in queryset}
+        self.unit_map = {str(o.pk): (getattr(o, 'unit', '') or '') for o in queryset}
+        self.manufacturer_map = {str(o.pk): (o.manufacturer or '') for o in queryset}
+        self.article_map = {str(o.pk): (o.article or '') for o in queryset}
+        self.country_map = {str(o.pk): (o.country or '') for o in queryset}
+        self.description_map = {str(o.pk): (o.description or '') for o in queryset}
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        opt = super().create_option(name, value, label, selected, index, subindex=subindex, attrs=attrs)
+        raw_value = getattr(value, 'value', value)
+        if raw_value not in (None, ''):
+            key = str(raw_value)
+            attrs_dict = opt.setdefault('attrs', {})
+            if key in self.price_map:
+                attrs_dict['data-price'] = self.price_map[key]
+            if key in self.unit_map:
+                attrs_dict['data-unit'] = self.unit_map[key]
+            if key in self.manufacturer_map:
+                attrs_dict['data-manufacturer'] = self.manufacturer_map[key]
+            if key in self.article_map:
+                attrs_dict['data-article'] = self.article_map[key]
+            if key in self.country_map:
+                attrs_dict['data-country'] = self.country_map[key]
+            if key in self.description_map:
+                attrs_dict['data-description'] = self.description_map[key]
+        return opt
 
 
 class DealCreateForm(forms.ModelForm):
@@ -99,40 +153,74 @@ class DealCreateForm(forms.ModelForm):
 
 
 class DealConfiguratorForm(forms.Form):
-    building_area = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D3 Площадь застройки дома, кв.м')
-    living_area = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D4 Жилая площадь дома, кв.м')
-    ceiling_height = forms.DecimalField(min_value=0, decimal_places=2, max_digits=5, label='D5 Высота чистового потолка, м')
-    floor_150_qty = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D7 Утепление пола 150мм, кв.м')
-    floor_200_qty = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D8 Утепление пола 200мм, кв.м')
-    floor_250_qty = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D9 Утепление пола 250мм, кв.м')
-    floor_laminate_qty = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D10 Чистовое покрытие пола - ламинат, кв.м')
-    floor_tile_qty = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D11 Чистовое покрытие пола - керамогранит, кв.м')
-    facade_planken_lm = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D13 Наружный фасад планкен, м.п.')
-    facade_combined_lm = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D14 Наружный фасад комбинированный, м.п.')
-    partition_double_lm = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D17 Сдвоенные перегородки 200мм, м.п.')
-    partition_single_lm = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D18 Одинарные перегородки 100мм, м.п.')
-    finish_quarter_lm = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D20 Интерьерная доска "в четверть", м.п.')
-    finish_ldsp_lm = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D21 Отделка ЛДСП, м.п.')
-    finish_gkl_lm = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D22 Отделка ГКЛ, м.п.')
-    finish_mdf_lm = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D23 Отделка МДФ, м.п.')
-    finish_plywood_lm = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D24 Отделка Фанера/рейка, м.п.')
-    bathroom_tile_lm = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D25 Отделка стен санузла керамогранитом, м.п.')
-    roof_gable_qty = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D27 Кровля двускатная, кв.м')
-    roof_flat_qty = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D28 Кровля плоская, кв.м')
-    interior_doors_count = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D30 Двери межкомнатные, шт')
-    sauna_cost = forms.DecimalField(min_value=0, decimal_places=2, max_digits=12, label='D31 Сауна, руб', required=False)
-    sauna_installation_cost = forms.DecimalField(min_value=0, decimal_places=2, max_digits=12, label='D32 Монтаж сауны/печи, руб', required=False)
-    windows_count = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D33 Окна, шт')
-    windows_total_cost = forms.DecimalField(min_value=0, decimal_places=2, max_digits=12, label='D34 Стоимость окон, руб', required=False)
-    panoramic_sections_count = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D35 Панорамные секции, шт')
-    panoramic_sections_total_cost = forms.DecimalField(min_value=0, decimal_places=2, max_digits=12, label='D36 Стоимость панорамных секций, руб', required=False)
-    bathrooms_count = forms.DecimalField(min_value=0, decimal_places=2, max_digits=10, label='D37 Количество санузлов, шт')
+    class ConfigDecimalField(forms.DecimalField):
+        def to_python(self, value):
+            if value in self.empty_values:
+                return super().to_python(value)
+            raw = str(value).strip()
+            raw = (
+                raw.replace(' ', '')
+                .replace('\xa0', '')
+                .replace('\u202f', '')
+                .replace('₽', '')
+            )
+            has_comma = ',' in raw
+            has_dot = '.' in raw
+            if has_comma and has_dot:
+                last_comma = raw.rfind(',')
+                last_dot = raw.rfind('.')
+                dec_sep = ',' if last_comma > last_dot else '.'
+                grp_sep = '.' if dec_sep == ',' else ','
+                raw = raw.replace(grp_sep, '')
+                if dec_sep == ',':
+                    raw = raw.replace(',', '.')
+            elif has_comma:
+                raw = raw.replace(',', '.')
+            return super().to_python(raw)
+
+    building_area = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D3 Площадь застройки дома, кв.м')
+    living_area = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D4 Жилая площадь дома, кв.м')
+    ceiling_height = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=5, label='D5 Высота чистового потолка, м')
+    floor_150_qty = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D7 Утепление пола 150мм, кв.м')
+    floor_200_qty = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D8 Утепление пола 200мм, кв.м')
+    floor_250_qty = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D9 Утепление пола 250мм, кв.м')
+    floor_laminate_qty = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D10 Чистовое покрытие пола - ламинат, кв.м')
+    floor_tile_qty = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D11 Чистовое покрытие пола - керамогранит, кв.м')
+    facade_planken_lm = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D13 Наружный фасад планкен, м.п.')
+    facade_combined_lm = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D14 Наружный фасад комбинированный, м.п.')
+    partition_double_lm = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D17 Сдвоенные перегородки 200мм, м.п.')
+    partition_single_lm = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D18 Одинарные перегородки 100мм, м.п.')
+    finish_quarter_lm = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D20 Интерьерная доска "в четверть", м.п.')
+    finish_ldsp_lm = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D21 Отделка ЛДСП, м.п.')
+    finish_gkl_lm = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D22 Отделка ГКЛ, м.п.')
+    finish_mdf_lm = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D23 Отделка МДФ, м.п.')
+    finish_plywood_lm = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D24 Отделка Фанера/рейка, м.п.')
+    bathroom_tile_lm = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D25 Отделка стен санузла керамогранитом, м.п.')
+    roof_gable_qty = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D27 Кровля двускатная, кв.м')
+    roof_flat_qty = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D28 Кровля плоская, кв.м')
+    interior_doors_count = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D30 Двери межкомнатные, шт')
+    sauna_cost = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=12, label='D31 Сауна, руб', required=False)
+    sauna_installation_cost = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=12, label='D32 Монтаж сауны/печи, руб', required=False)
+    windows_count = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D33 Окна, шт')
+    windows_total_cost = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=12, label='D34 Стоимость окон, руб', required=False)
+    panoramic_sections_count = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D35 Панорамные секции, шт')
+    panoramic_sections_total_cost = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=12, label='D36 Стоимость панорамных секций, руб', required=False)
+    bathrooms_count = ConfigDecimalField(min_value=0, decimal_places=2, max_digits=10, label='D37 Количество санузлов, шт')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for field_name, field in self.fields.items():
             css = 'form-select' if isinstance(field, forms.ChoiceField) else 'form-control'
             field.widget.attrs.update({'class': css})
+            if isinstance(field, forms.DecimalField):
+                field.widget = forms.TextInput(
+                    attrs={
+                        'class': css,
+                        'inputmode': 'decimal',
+                        'autocomplete': 'off',
+                        'data-format-thousands': '1',
+                    }
+                )
 
 
 class DashboardLeadForm(forms.Form):
@@ -224,6 +312,138 @@ class DashboardLeadForm(forms.Form):
         if not value.startswith('+7'):
             raise forms.ValidationError('Номер должен начинаться с +7.')
         return value
+
+
+class DealBathroomLineForm(forms.ModelForm):
+    selected_option = forms.ModelChoiceField(
+        queryset=CostItemOption.objects.none(),
+        required=False,
+        label='Модель',
+        widget=OptionWithPriceSelect(
+            attrs={'class': 'form-select form-select-sm bathroom-option-select'},
+        ),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        instance = getattr(self, 'instance', None)
+        if instance and instance.cost_item_id and instance.kind == DealBathroomLine.LineKind.MATERIAL:
+            qs = instance.cost_item.options.filter(is_active=True).order_by('sort_order', 'name_ru')
+            self.fields['selected_option'].queryset = qs
+            self.fields['selected_option'].widget.attach_option_meta(qs)
+            self.fields['selected_option'].label_from_instance = lambda o: o.name_ru
+            if qs.exists():
+                self.fields['selected_option'].empty_label = None
+            if instance.pk and not instance.selected_option_id:
+                first_opt = qs.exclude(code='customer_material').order_by('sort_order', 'id').first()
+                if first_opt is not None:
+                    self.initial['selected_option'] = first_opt.pk
+        else:
+            self.fields['selected_option'].queryset = CostItemOption.objects.none()
+
+    @staticmethod
+    def _to_decimal(value, field_name):
+        raw = '' if value is None else str(value).strip()
+        raw = (
+            raw.replace(' ', '')
+            .replace('\xa0', '')
+            .replace('\u202f', '')
+            .replace('₽', '')
+        )
+        if raw == '':
+            raise forms.ValidationError(f'Поле "{field_name}" обязательно для заполнения.')
+        # Поддерживаем форматы:
+        # - 12000.50
+        # - 12,000.50
+        # - 12 000,50
+        # - 12000,50
+        has_comma = ',' in raw
+        has_dot = '.' in raw
+        if has_comma and has_dot:
+            # Последний разделитель считаем десятичным, остальные удаляем как группировочные.
+            last_comma = raw.rfind(',')
+            last_dot = raw.rfind('.')
+            dec_sep = ',' if last_comma > last_dot else '.'
+            grp_sep = '.' if dec_sep == ',' else ','
+            raw = raw.replace(grp_sep, '')
+            if dec_sep == ',':
+                raw = raw.replace(',', '.')
+        elif has_comma:
+            raw = raw.replace(',', '.')
+        try:
+            dec = Decimal(raw)
+        except (InvalidOperation, ValueError, TypeError):
+            raise forms.ValidationError(f'Поле "{field_name}" должно быть числом.')
+        if dec < 0:
+            raise forms.ValidationError(f'Поле "{field_name}" не может быть отрицательным.')
+        return dec
+
+    def clean_quantity(self):
+        return self._to_decimal(self.data.get(self.add_prefix('quantity')), 'Кол-во')
+
+    def clean_unit_price(self):
+        return self._to_decimal(self.data.get(self.add_prefix('unit_price')), 'Цена')
+
+    class Meta:
+        model = DealBathroomLine
+        fields = ('is_included', 'selected_option', 'quantity', 'unit_price')
+        widgets = {
+            'is_included': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'quantity': forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'step': '0.01', 'min': '0'}),
+            'unit_price': forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'step': '0.01', 'min': '0'}),
+        }
+
+
+BathroomLineFormSet = inlineformset_factory(
+    DealBathroom,
+    DealBathroomLine,
+    form=DealBathroomLineForm,
+    extra=0,
+    can_delete=False,
+)
+
+
+class DealAdditionalOptionLineForm(forms.ModelForm):
+    class Meta:
+        model = DealAdditionalOptionLine
+        fields = ('is_included', 'quantity', 'unit_price')
+        widgets = {
+            'is_included': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'quantity': forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'step': '0.01', 'min': '0'}),
+            'unit_price': forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'step': '0.01', 'min': '0'}),
+        }
+
+
+class AdditionalOptionCreateForm(forms.Form):
+    UNIT_CHOICES = [
+        ('sqm', 'м2'),
+        ('pcs', 'шт'),
+        ('lm', 'м.п.'),
+        ('rubles', 'руб'),
+        ('complex', 'компл.'),
+    ]
+    name = forms.CharField(max_length=255, label='Наименование')
+    unit = forms.ChoiceField(choices=UNIT_CHOICES, label='Ед.')
+    quantity = forms.DecimalField(min_value=0, decimal_places=2, max_digits=12, label='Кол-во')
+    unit_price = forms.DecimalField(min_value=0, decimal_places=2, max_digits=12, label='Цена, ₽')
+    is_included = forms.BooleanField(required=False, initial=True, label='Вкл.')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['name'].widget.attrs.update({'class': 'form-control form-control-sm'})
+        self.fields['unit'].widget.attrs.update({'class': 'form-select form-select-sm'})
+        self.fields['quantity'].widget.attrs.update({'class': 'form-control form-control-sm', 'step': '0.01', 'min': '0'})
+        self.fields['unit_price'].widget.attrs.update({'class': 'form-control form-control-sm', 'step': '0.01', 'min': '0'})
+        self.fields['is_included'].widget.attrs.update({'class': 'form-check-input'})
+
+
+AdditionalOptionLineFormSet = inlineformset_factory(
+    ProjectVersion,
+    DealAdditionalOptionLine,
+    form=DealAdditionalOptionLineForm,
+    extra=0,
+    can_delete=False,
+)
 
 
 class DealFileUploadForm(forms.Form):

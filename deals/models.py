@@ -1,4 +1,5 @@
 import re
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from django.conf import settings
@@ -128,6 +129,131 @@ class ProjectVersion(models.Model):
 
     def __str__(self):
         return f'{self.deal.project_code} v{self.version_number}'
+
+
+class DealBathroom(models.Model):
+    """Один санузел в рамках версии проекта (вкладка «Санузел №k»)."""
+
+    deal = models.ForeignKey('Deal', on_delete=models.CASCADE, related_name='deal_bathrooms')
+    project_version = models.ForeignKey(
+        'ProjectVersion',
+        on_delete=models.CASCADE,
+        related_name='bathrooms',
+    )
+    index = models.PositiveSmallIntegerField()
+    label = models.CharField(max_length=100, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['project_version', 'index'], name='uniq_project_version_bathroom_index'),
+        ]
+        ordering = ['index']
+
+    def __str__(self):
+        return f'{self.project_version} · санузел {self.index}'
+
+
+class DealBathroomLine(models.Model):
+    """Строка наполнения санузла (снимок из каталога)."""
+
+    class LineKind(models.TextChoices):
+        MATERIAL = 'material', 'Материал'
+        WORK = 'work', 'Работа'
+        MIXED = 'mixed', 'Смешанный'
+
+    bathroom = models.ForeignKey(
+        DealBathroom,
+        on_delete=models.CASCADE,
+        related_name='lines',
+    )
+    cost_item = models.ForeignKey(
+        'catalog.CostItem',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='deal_bathroom_lines',
+    )
+    selected_option = models.ForeignKey(
+        'catalog.CostItemOption',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='selected_bathroom_lines',
+    )
+    name_snapshot = models.CharField(max_length=255)
+    kind = models.CharField(max_length=20, choices=LineKind.choices)
+    is_included = models.BooleanField(default=True)
+    quantity = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('1'))
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['sort_order', 'id']
+
+    def __str__(self):
+        return f'{self.bathroom} · {self.name_snapshot}'
+
+    @property
+    def line_total(self) -> Decimal:
+        if not self.is_included:
+            return Decimal('0')
+        q = Decimal(str(self.quantity))
+        p = Decimal(str(self.unit_price))
+        return (q * p).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+
+class DealAdditionalOptionLine(models.Model):
+    """Строка раздела «Дополнительные опции» в рамках версии проекта."""
+
+    class LineKind(models.TextChoices):
+        MATERIAL = 'material', 'Материал'
+        WORK = 'work', 'Работа'
+        MIXED = 'mixed', 'Смешанный'
+
+    project_version = models.ForeignKey(
+        'ProjectVersion',
+        on_delete=models.CASCADE,
+        related_name='additional_option_lines',
+    )
+    cost_item = models.ForeignKey(
+        'catalog.CostItem',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='deal_additional_option_lines',
+    )
+    name_snapshot = models.CharField(max_length=255)
+    kind = models.CharField(max_length=20, choices=LineKind.choices, default=LineKind.MATERIAL)
+    is_included = models.BooleanField(default=False)
+    quantity = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0'))
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0'))
+    unit_snapshot = models.CharField(max_length=20, default='pcs', blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['sort_order', 'id']
+
+    def __str__(self):
+        return f'{self.project_version} · {self.name_snapshot}'
+
+    @property
+    def line_total(self) -> Decimal:
+        if not self.is_included:
+            return Decimal('0')
+        q = Decimal(str(self.quantity))
+        p = Decimal(str(self.unit_price))
+        return (q * p).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+    @property
+    def unit_ru(self) -> str:
+        mapping = {
+            'sqm': 'м2',
+            'pcs': 'шт',
+            'lm': 'м.п.',
+            'rubles': 'руб',
+            'complex': 'компл.',
+        }
+        return mapping.get(self.unit_snapshot or '', self.unit_snapshot or '—')
 
 
 class ChangeLog(models.Model):

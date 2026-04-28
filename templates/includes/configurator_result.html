@@ -39,6 +39,40 @@
                 <div>Подытог: <strong>{{ calc_result.totals.subtotal|floatformat:2 }} ₽</strong></div>
                 <div>С наценкой {{ calc_result.totals.margin_percent|floatformat:2 }}%: <strong>{{ calc_result.totals.with_margin|floatformat:2 }} ₽</strong></div>
             </div>
+            {% if calc_result.additional_options %}
+                <div class="p-3 border-top bg-light">
+                    <div class="fw-semibold mb-2">Дополнительные опции (отдельно, не входят в итог выше)</div>
+                    <div>Материалы: <strong>{{ calc_result.additional_options.material_total|floatformat:2 }} ₽</strong></div>
+                    <div>Работа: <strong>{{ calc_result.additional_options.work_total|floatformat:2 }} ₽</strong></div>
+                    <div>Итого: <strong>{{ calc_result.additional_options.subtotal|floatformat:2 }} ₽</strong></div>
+                    {% if calc_result.additional_options.rows %}
+                        <div class="table-responsive mt-2">
+                            <table class="table table-sm table-bordered mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Опция</th>
+                                        <th>Кол-во</th>
+                                        <th>Цена</th>
+                                        <th>Сумма</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in calc_result.additional_options.rows %}
+                                        <tr>
+                                            <td>{{ row.name }}</td>
+                                            <td>{{ row.quantity|floatformat:2 }} {{ row.unit }}</td>
+                                            <td>{{ row.unit_price|floatformat:2 }} ₽</td>
+                                            <td>{{ row.line_total|floatformat:2 }} ₽</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-muted small mt-1">Нет включенных дополнительных опций.</div>
+                    {% endif %}
+                </div>
+            {% endif %}
         {% else %}
             <div class="p-3 text-muted">Заполните параметры для расчёта.</div>
         {% endif %}

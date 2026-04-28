@@ -23,6 +23,7 @@ from clients.models import Client
 from deals.forms import DashboardLeadForm, DealConfiguratorForm, DealFileUploadForm
 from deals.models import ChangeLog, Deal, ProjectFile, ProjectVersion
 from deals.views import _files_context
+from deals.services.bathrooms import bathrooms_button_enabled
 from deals.services.calculation_engine import calculate_config
 from tasks.models import Task
 
@@ -495,7 +496,11 @@ class DealDetailView(LoginRequiredMixin, DetailView):
         )
         calc_result = frozen.get('calculation')
         if calc_result is None:
-            calc_result = calculate_config(config_form.initial, margin_percent=self.object.margin_percent)
+            calc_result = calculate_config(
+                config_form.initial,
+                margin_percent=self.object.margin_percent,
+                version=draft_version,
+            )
 
         context['versions'] = self.object.versions.all()
         context['tasks_for_deal'] = self.object.tasks.all()
@@ -507,6 +512,7 @@ class DealDetailView(LoginRequiredMixin, DetailView):
         context['config_form'] = config_form
         context['calc_result'] = calc_result
         context['save_success'] = False
+        context['bathrooms_button_enabled'] = bathrooms_button_enabled(frozen)
         context['change_logs'] = ChangeLog.objects.filter(project_version__deal=self.object).select_related(
             'project_version', 'changed_by'
         )[:20]

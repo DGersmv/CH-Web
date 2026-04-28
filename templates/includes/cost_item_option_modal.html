@@ -1,0 +1,56 @@
+{# Модалка создания новой модели (CostItemOption). Требует в контексте: option_unit_choices_ru #}
+<div class="modal fade" id="costItemOptionModal" tabindex="-1" aria-labelledby="costItemOptionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h5 class="modal-title" id="costItemOptionModalLabel">Новая модель</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+            </div>
+            <div class="modal-body">
+                <form id="cost-item-option-modal-form">
+                    {% csrf_token %}
+                    <div class="row g-2">
+                        <div class="col-md-12 mb-1">
+                            <label class="form-label small mb-0">Наименование <span class="text-danger">*</span></label>
+                            <input type="text" name="name_ru" class="form-control form-control-sm" required maxlength="255">
+                        </div>
+                        <div class="col-md-6 mb-1">
+                            <label class="form-label small mb-0">Производитель</label>
+                            <input type="text" name="manufacturer" class="form-control form-control-sm" maxlength="255">
+                        </div>
+                        <div class="col-md-6 mb-1">
+                            <label class="form-label small mb-0">Артикул</label>
+                            <input type="text" name="article" class="form-control form-control-sm" maxlength="100">
+                        </div>
+                        <div class="col-md-6 mb-1">
+                            <label class="form-label small mb-0">Страна</label>
+                            <input type="text" name="country" class="form-control form-control-sm" maxlength="100">
+                        </div>
+                        <div class="col-md-6 mb-1">
+                            <label class="form-label small mb-0">Ед. расчёта</label>
+                            <select name="unit" class="form-select form-select-sm">
+                                <option value="">Как в карточке позиции</option>
+                                {% for val, label in option_unit_choices_ru %}
+                                    <option value="{{ val }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-1">
+                            <label class="form-label small mb-0">Цена, ₽ <span class="text-danger">*</span></label>
+                            <input type="number" name="price" class="form-control form-control-sm" step="0.01" min="0" required value="0">
+                        </div>
+                        <div class="col-md-12 mb-1">
+                            <label class="form-label small mb-0">Примечания</label>
+                            <textarea name="description" class="form-control form-control-sm" rows="2" maxlength="500"></textarea>
+                        </div>
+                    </div>
+                    <div id="cost-item-option-modal-error" class="alert alert-danger py-2 mt-2 mb-0 d-none small"></div>
+                </form>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary btn-sm" id="cost-item-option-modal-submit">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>

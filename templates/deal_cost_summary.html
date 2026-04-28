@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load humanize %}
 
 {% block content %}
     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -24,8 +25,32 @@
                 {% csrf_token %}
                 {% for field in config_form %}
                     <div class="col-md-4">
-                        <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                        {{ field }}
+                        {% if field.name == 'bathrooms_count' %}
+                            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                            <div class="input-group">
+                                {{ field }}
+                                <a
+                                    href="{% url 'deal_bathrooms_page' deal.id %}"
+                                    class="btn btn-outline-primary js-bathrooms-calc-link {% if not bathrooms_button_enabled %}disabled{% endif %}"
+                                    data-base-href="{% url 'deal_bathrooms_page' deal.id %}"
+                                    {% if not bathrooms_button_enabled %}aria-disabled="true"{% endif %}
+                                >Рассчитать</a>
+                            </div>
+                            <div class="mt-2">
+                                <a href="{% url 'deal_additional_options_page' deal.id %}" class="btn btn-outline-secondary btn-sm">
+                                    Дополнительные опции
+                                </a>
+                            </div>
+                            <div class="border rounded p-2 mt-2 small bg-light">
+                                <div class="fw-semibold mb-1">СТОИМОСТЬ САНУЗЛОВ</div>
+                                <div>Материалы: {{ bathroom_material_total|floatformat:2|intcomma }} ₽</div>
+                                <div>Работа: {{ bathroom_work_total|floatformat:2|intcomma }} ₽</div>
+                                <div>Итого: {{ bathroom_grand_total|floatformat:2|intcomma }} ₽</div>
+                            </div>
+                        {% else %}
+                            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                            {{ field }}
+                        {% endif %}
                         {% if field.errors %}<div class="text-danger small">{{ field.errors|join:", " }}</div>{% endif %}
                     </div>
                 {% endfor %}
@@ -41,4 +66,72 @@
             {% include "includes/configurator_result.html" with calc_result=calc_result %}
         </div>
     </div>
+    <script>
+        (function () {
+            function normalizeNumericString(raw) {
+                var s = String(raw || '').trim()
+                    .replace(/\s/g, '')
+                    .replace(/\u00A0/g, '')
+                    .replace(/\u202F/g, '')
+                    .replace(/₽/g, '');
+                if (!s) return '';
+                var hasComma = s.indexOf(',') >= 0;
+                var hasDot = s.indexOf('.') >= 0;
+                if (hasComma && hasDot) {
+                    var lastComma = s.lastIndexOf(',');
+                    var lastDot = s.lastIndexOf('.');
+                    var decSep = lastComma > lastDot ? ',' : '.';
+                    var grpSep = decSep === ',' ? '.' : ',';
+                    s = s.split(grpSep).join('');
+                    if (decSep === ',') s = s.replace(',', '.');
+                } else if (hasComma) {
+                    s = s.replace(',', '.');
+                }
+                return s;
+            }
+            function formatThousandsInput(inp) {
+                var normalized = normalizeNumericString(inp.value);
+                if (!normalized) {
+                    inp.value = '';
+                    return;
+                }
+                var num = Number(normalized);
+                if (!Number.isFinite(num)) return;
+                var decimals = 0;
+                var dotPos = normalized.indexOf('.');
+                if (dotPos >= 0) decimals = Math.min(2, normalized.length - dotPos - 1);
+                inp.value = num.toLocaleString('ru-RU', {
+                    minimumFractionDigits: decimals,
+                    maximumFractionDigits: decimals,
+                });
+            }
+            var link = document.querySelector('.js-bathrooms-calc-link');
+            var input = document.getElementById('id_bathrooms_count');
+            if (!link || !input) return;
+            function syncHref() {
+                var base = link.getAttribute('data-base-href') || link.getAttribute('href') || '';
+                var raw = String(input.value || '').trim();
+                if (!raw) {
+                    link.setAttribute('href', base);
+                    return;
+                }
+                link.setAttribute('href', base + '?count=' + encodeURIComponent(raw));
+            }
+            input.addEventListener('input', syncHref);
+            input.addEventListener('change', syncHref);
+            syncHref();
+
+            var cfgForm = document.querySelector('form.row.g-3');
+            if (!cfgForm) return;
+            cfgForm.querySelectorAll('input[data-format-thousands="1"]').forEach(function (inp) {
+                formatThousandsInput(inp);
+                inp.addEventListener('focus', function () {
+                    inp.value = normalizeNumericString(inp.value);
+                });
+                inp.addEventListener('blur', function () {
+                    formatThousandsInput(inp);
+                });
+            });
+        })();
+    </script>
 {% endblock %}
