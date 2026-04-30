@@ -11,7 +11,6 @@
                 <table class="table table-sm table-striped mb-0">
                     <thead>
                         <tr>
-                            <th>Код</th>
                             <th>Позиция</th>
                             <th>Кол-во</th>
                             <th>Материал</th>
@@ -21,14 +20,15 @@
                     </thead>
                     <tbody>
                         {% for row in calc_result.rows %}
-                            <tr>
-                                <td><code>{{ row.code }}</code></td>
-                                <td>{{ row.label }}</td>
-                                <td>{{ row.quantity|floatformat:2 }} {{ row.unit }}</td>
-                                <td>{{ row.material_total|floatformat:2 }} ₽</td>
-                                <td>{{ row.work_total|floatformat:2 }} ₽</td>
-                                <td>{{ row.line_total|floatformat:2 }} ₽</td>
-                            </tr>
+                            {% if row.quantity > 0 %}
+                                <tr>
+                                    <td>{{ row.label }}</td>
+                                    <td>{{ row.quantity|floatformat:2 }} {{ row.unit }}</td>
+                                    <td>{{ row.material_total|floatformat:2 }} ₽</td>
+                                    <td>{{ row.work_total|floatformat:2 }} ₽</td>
+                                    <td>{{ row.line_total|floatformat:2 }} ₽</td>
+                                </tr>
+                            {% endif %}
                         {% endfor %}
                     </tbody>
                 </table>

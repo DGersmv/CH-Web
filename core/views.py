@@ -518,10 +518,16 @@ class DealDetailView(LoginRequiredMixin, DetailView):
         )[:20]
         context.update(_files_context(self.object, viewer=self.request.user))
         totals = (calc_result or {}).get('totals', {}) if isinstance(calc_result, dict) else {}
+        additional_options = (calc_result or {}).get('additional_options', {}) if isinstance(calc_result, dict) else {}
         materials = self._as_money_decimal(totals.get('material_total'))
         work = self._as_money_decimal(totals.get('work_total'))
         subtotal = self._as_money_decimal(totals.get('subtotal'))
         with_margin = self._as_money_decimal(totals.get('with_margin'))
+        additional_options_total = self._as_money_decimal(additional_options.get('subtotal')) or Decimal('0.00')
+        total_for_customer = ((with_margin or Decimal('0.00')) + additional_options_total).quantize(
+            Decimal('0.01'),
+            rounding=ROUND_HALF_UP,
+        )
         building_area_value = self._as_decimal(config_form.initial.get('building_area'))
         cost_per_m2 = None
         if building_area_value and building_area_value > 0 and with_margin is not None:
@@ -538,6 +544,8 @@ class DealDetailView(LoginRequiredMixin, DetailView):
             'work_total': work or Decimal('0.00'),
             'subtotal': subtotal or Decimal('0.00'),
             'with_margin': with_margin or Decimal('0.00'),
+            'additional_options_total': additional_options_total,
+            'total_for_customer': total_for_customer,
             'margin_percent': self._as_decimal(totals.get('margin_percent')) or Decimal(str(self.object.margin_percent)),
             'saved_at': saved_at,
             'building_area': building_area_value or Decimal('0.00'),

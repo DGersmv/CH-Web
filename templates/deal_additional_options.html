@@ -50,10 +50,10 @@
 
     <div class="card mb-3">
         <div class="card-body py-2">
-            <div class="row g-2 small">
-                <div class="col-md-4"><strong>Материалы:</strong> {{ material_total|floatformat:2|intcomma }} ₽</div>
-                <div class="col-md-4"><strong>Работа:</strong> {{ work_total|floatformat:2|intcomma }} ₽</div>
-                <div class="col-md-4"><strong>Итого:</strong> {{ grand_total|floatformat:2|intcomma }} ₽</div>
+            <div class="row g-2 small" id="additional-options-totals">
+                <div class="col-md-4"><strong>Материалы:</strong> <span id="total-material">{{ material_total|floatformat:2|intcomma }}</span> ₽</div>
+                <div class="col-md-4"><strong>Работа:</strong> <span id="total-work">{{ work_total|floatformat:2|intcomma }}</span> ₽</div>
+                <div class="col-md-4"><strong>Итого:</strong> <span id="total-grand">{{ grand_total|floatformat:2|intcomma }}</span> ₽</div>
             </div>
         </div>
     </div>
@@ -80,7 +80,7 @@
                 </thead>
                 <tbody>
                     {% for form in formset %}
-                        <tr>
+                        <tr class="option-row" data-kind="{{ form.instance.kind }}">
                             <td class="text-center">{{ form.is_included }}</td>
                             <td>{{ form.instance.name_snapshot }}</td>
                             <td>
@@ -88,7 +88,7 @@
                             </td>
                             <td>{{ form.quantity }}</td>
                             <td>{{ form.unit_price }}</td>
-                            <td>{{ form.instance.line_total|floatformat:2|intcomma }}</td>
+                            <td><span class="line-total">{{ form.instance.line_total|floatformat:2|intcomma }}</span></td>
                         </tr>
                         {% if form.errors %}
                             <tr>
@@ -103,9 +103,67 @@
                         {% endif %}
                     {% endfor %}
                 </tbody>
+                <tfoot>
+                    <tr class="table-light">
+                        <td colspan="5" class="text-end"><strong>Сумма итого (по отмеченным):</strong></td>
+                        <td><strong id="table-grand-total">0,00</strong></td>
+                    </tr>
+                </tfoot>
             </table>
         </div>
         <button type="submit" class="btn btn-primary">Сохранить дополнительные опции</button>
     </form>
+    <script>
+        (function () {
+            function toNumber(raw) {
+                if (!raw) return 0;
+                return Number(String(raw).replace(/\s/g, '').replace(',', '.')) || 0;
+            }
+
+            function formatMoney(value) {
+                return value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            }
+
+            function recalc() {
+                let material = 0;
+                let work = 0;
+
+                document.querySelectorAll('tr.option-row').forEach(function (row) {
+                    const include = row.querySelector('input[type="checkbox"][name$="-is_included"]');
+                    const qtyInput = row.querySelector('input[name$="-quantity"]');
+                    const priceInput = row.querySelector('input[name$="-unit_price"]');
+                    const lineTotalEl = row.querySelector('.line-total');
+                    const kind = row.dataset.kind || 'material';
+
+                    const quantity = toNumber(qtyInput && qtyInput.value);
+                    const unitPrice = toNumber(priceInput && priceInput.value);
+                    const lineTotal = quantity * unitPrice;
+
+                    lineTotalEl.textContent = formatMoney(lineTotal);
+
+                    if (include && include.checked) {
+                        if (kind === 'work') work += lineTotal;
+                        else if (kind === 'mixed') {
+                            material += lineTotal / 2;
+                            work += lineTotal / 2;
+                        } else material += lineTotal;
+                    }
+                });
+
+                document.getElementById('total-material').textContent = formatMoney(material);
+                document.getElementById('total-work').textContent = formatMoney(work);
+                const grand = material + work;
+                document.getElementById('total-grand').textContent = formatMoney(grand);
+                document.getElementById('table-grand-total').textContent = formatMoney(grand);
+            }
+
+            document.querySelectorAll('tr.option-row input').forEach(function (el) {
+                el.addEventListener('input', recalc);
+                el.addEventListener('change', recalc);
+            });
+
+            recalc();
+        })();
+    </script>
 {% endblock %}
 
