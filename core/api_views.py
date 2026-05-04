@@ -105,6 +105,13 @@ class DirectMessageReadApi(APIView):
         if message.read_at is None:
             message.read_at = timezone.now()
             message.save(update_fields=['read_at'])
+            Notification.objects.filter(
+                user=request.user,
+                notification_type=Notification.Type.MESSAGE_RECEIVED,
+                related_model='DirectMessage',
+                related_id=message.id,
+                is_read=False,
+            ).update(is_read=True, read_at=timezone.now())
         return Response(_message_payload(message), status=status.HTTP_200_OK)
 
 

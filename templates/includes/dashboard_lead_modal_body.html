@@ -19,6 +19,7 @@
         {% if lead_form.first_name.errors %}
             <div class="text-danger small">{{ lead_form.first_name.errors|join:", " }}</div>
         {% endif %}
+        <div class="form-text">Входит в код сделки между «МД» и участком (например 5МД-Иван-Апатиты).</div>
     </div>
     <div class="col-md-4">
         <label class="form-label" for="{{ lead_form.middle_name.id_for_label }}">{{ lead_form.middle_name.label }}</label>

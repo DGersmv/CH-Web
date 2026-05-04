@@ -37,7 +37,7 @@ class Deal(models.Model):
     code_client_name = models.CharField(
         max_length=200,
         blank=True,
-        verbose_name='Фамилия / компания (в коде проекта)',
+        verbose_name='Имя / компания (в коде проекта)',
     )
     code_site_name = models.CharField(
         max_length=200,

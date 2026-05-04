@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="mb-0">{% if is_edit %}Редактирование клиента{% else %}Новый клиент{% endif %}</h1>
+        <a href="{% url 'clients' %}" class="btn btn-outline-secondary">К списку</a>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <p class="text-muted small mb-3">
+                Для физлица заполните <strong>фамилию и имя</strong> (отчество по желанию). Для юрлица укажите только <strong>название компании</strong>.
+                Участки задаются в сделках.
+            </p>
+            <form method="post" class="row g-3">
+                {% csrf_token %}
+                {% if form.non_field_errors %}
+                    <div class="col-12">
+                        <div class="alert alert-danger py-2 small mb-0">{{ form.non_field_errors|join:" " }}</div>
+                    </div>
+                {% endif %}
+                <div class="col-12">
+                    <label class="form-label" for="{{ form.company_name.id_for_label }}">{{ form.company_name.label }}</label>
+                    {{ form.company_name }}
+                    {% if form.company_name.errors %}
+                        <div class="text-danger small">{{ form.company_name.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="{{ form.last_name.id_for_label }}">{{ form.last_name.label }}</label>
+                    {{ form.last_name }}
+                    {% if form.last_name.errors %}
+                        <div class="text-danger small">{{ form.last_name.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="{{ form.first_name.id_for_label }}">{{ form.first_name.label }}</label>
+                    {{ form.first_name }}
+                    {% if form.first_name.errors %}
+                        <div class="text-danger small">{{ form.first_name.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="{{ form.middle_name.id_for_label }}">{{ form.middle_name.label }}</label>
+                    {{ form.middle_name }}
+                    {% if form.middle_name.errors %}
+                        <div class="text-danger small">{{ form.middle_name.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="{{ form.phone.id_for_label }}">{{ form.phone.label }}</label>
+                    {{ form.phone }}
+                    {% if form.phone.errors %}
+                        <div class="text-danger small">{{ form.phone.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
+                    {{ form.email }}
+                    {% if form.email.errors %}
+                        <div class="text-danger small">{{ form.email.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-12">
+                    <label class="form-label" for="{{ form.notes.id_for_label }}">{{ form.notes.label }}</label>
+                    {{ form.notes }}
+                    {% if form.notes.errors %}
+                        <div class="text-danger small">{{ form.notes.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">{% if is_edit %}Сохранить{% else %}Создать{% endif %}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}

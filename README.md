@@ -14,6 +14,22 @@ docker compose up -d
 ```
 
 Приложение доступно на `http://localhost:8001`, Postgres проброшен на `localhost:5433`.
+
+Если меняли Python-код или `urls.py`, а интерфейс как будто старый, перезапустите приложение (Daphne сам код не подхватывает):
+
+```bash
+docker compose restart app
+```
+
+После правок шаблонов обычно достаточно обновить страницу в браузере (при необходимости с принудительным сбросом кэша: Ctrl+F5).
+
+### Команды `manage.py` с Windows вне Docker
+
+Тогда `python manage.py migrate` ругается на отсутствие Django: либо активируйте venv с зависимостями (`python -m venv .venv`, затем `.\.venv\Scripts\pip install -r requirements.txt`), либо **выполняйте команды внутри контейнера** (так надёжнее, БД доступна по имени `db`):
+
+```bash
+docker compose exec app python manage.py migrate
+```
 При старте контейнера `app` автоматически выполняются:
 - `python manage.py migrate --noinput`
 - `python manage.py collectstatic --noinput`

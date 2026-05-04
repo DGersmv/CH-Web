@@ -15,7 +15,7 @@ from django.views.generic.edit import FormView
 from django.utils import timezone
 
 from accounts.permissions import can_access_file_source, is_file_only_role
-from clients.models import Client
+from clients.models import Client, parse_quick_client_name
 
 from .forms import (
     AdditionalOptionCreateForm,
@@ -155,8 +155,14 @@ class DealCreateView(LoginRequiredMixin, FormView):
         deal = form.save(commit=False)
         new_client_name = form.cleaned_data.get('new_client_name', '').strip()
         if new_client_name and not deal.client:
-            client, _ = Client.objects.get_or_create(full_name=new_client_name, defaults={'created_by': self.request.user})
-            deal.client = client
+            parsed = parse_quick_client_name(new_client_name)
+            if parsed:
+                lookup = {k: parsed[k] for k in ('company_name', 'last_name', 'first_name', 'middle_name')}
+                client, _ = Client.objects.get_or_create(
+                    **lookup,
+                    defaults={'created_by': self.request.user},
+                )
+                deal.client = client
         deal.save()
         ensure_deal_dirs(deal)
         return redirect('deal_detail', pk=deal.pk)
@@ -171,18 +177,10 @@ def create_dashboard_lead(request):
     if not form.is_valid():
         return render(request, 'includes/dashboard_lead_modal_body.html', {'lead_form': form}, status=400)
 
-    full_name = ' '.join(
-        part.strip()
-        for part in [
-            form.cleaned_data['last_name'],
-            form.cleaned_data['first_name'],
-            form.cleaned_data.get('middle_name', ''),
-        ]
-        if part and part.strip()
-    )
     site_name = form.cleaned_data['location'].strip()
     module_count = form.cleaned_data['module_count']
-    lead_project_code = build_project_code_from_parts(module_count, form.cleaned_data['last_name'].strip(), site_name)
+    code_person_name = form.cleaned_data['first_name'].strip()
+    lead_project_code = build_project_code_from_parts(module_count, code_person_name, site_name)
     region_or_city = form.cleaned_data.get('region_or_city', '').strip()
     street = form.cleaned_data.get('street', '').strip()
     house_number = form.cleaned_data.get('house_number', '').strip()
@@ -194,20 +192,26 @@ def create_dashboard_lead(request):
     if house_number:
         address_parts.append(f'д. {house_number}')
     address_text = ', '.join(address_parts)
-    location_text = f'Участок: {site_name}'
+    comment = (form.cleaned_data.get('comment') or '').strip()
+    notes_parts = []
+    if comment:
+        notes_parts.append(comment)
     if address_text:
-        location_text = f'{location_text}. Адрес: {address_text}'
+        notes_parts.append(f'Адрес: {address_text}')
+    notes = '\n\n'.join(notes_parts)
     client = Client.objects.create(
-        full_name=full_name,
+        last_name=form.cleaned_data['last_name'].strip(),
+        first_name=form.cleaned_data['first_name'].strip(),
+        middle_name=(form.cleaned_data.get('middle_name') or '').strip(),
+        company_name='',
         phone=form.cleaned_data['phone'],
         email=form.cleaned_data.get('email', ''),
-        location=location_text,
-        notes=(form.cleaned_data.get('comment') or '').strip(),
+        notes=notes,
         created_by=request.user,
     )
     deal = Deal.objects.create(
         project_code=lead_project_code,
-        code_client_name=form.cleaned_data['last_name'].strip(),
+        code_client_name=code_person_name,
         code_site_name=site_name,
         module_count=module_count,
         client=client,

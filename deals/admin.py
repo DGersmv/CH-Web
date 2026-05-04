@@ -54,7 +54,9 @@ class DealAdmin(admin.ModelAdmin):
         'project_code_normalized',
         'code_client_name',
         'code_site_name',
-        'client__full_name',
+        'client__last_name',
+        'client__first_name',
+        'client__company_name',
     )
     ordering = ('-updated_at',)
     inlines = (ProjectVersionInline,)

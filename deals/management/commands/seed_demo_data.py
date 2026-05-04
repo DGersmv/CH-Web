@@ -56,25 +56,28 @@ class Command(BaseCommand):
         return result
 
     def _seed_clients(self, created_by):
+        # last_name, first_name, middle_name, company_name, phone, email
         specs = [
-            ('Иванов Иван Иванович', '+7 900 111-22-33', 'ivanov.client@example.com', 'Пулково'),
-            ('Петров Пётр Петрович', '+7 911 222-33-44', 'petrov.client@example.com', 'Токсово'),
-            ('Сидоров Сидор Сидорович', '+7 921 333-44-55', 'sidorov.client@example.com', 'Петергоф'),
-            ('ООО "Рога и копыта"', '+7 812 444-55-66', 'office@roga.example.com', 'Всеволожск'),
-            ('Козлов Константин', '+7 931 555-66-77', '', 'Кудрово'),
+            ('Иванов', 'Иван', 'Иванович', '', '+7 900 111-22-33', 'ivanov.client@example.com'),
+            ('Петров', 'Пётр', 'Петрович', '', '+7 911 222-33-44', 'petrov.client@example.com'),
+            ('Сидоров', 'Сидор', 'Сидорович', '', '+7 921 333-44-55', 'sidorov.client@example.com'),
+            ('', '', '', 'ООО "Рога и копыта"', '+7 812 444-55-66', 'office@roga.example.com'),
+            ('Козлов', 'Константин', '', '', '+7 931 555-66-77', ''),
         ]
         clients = {}
-        for full_name, phone, email, location in specs:
+        for last_name, first_name, middle_name, company_name, phone, email in specs:
             client, _ = Client.objects.get_or_create(
-                full_name=full_name,
+                last_name=last_name,
+                first_name=first_name,
+                middle_name=middle_name,
+                company_name=company_name,
                 defaults={
                     'phone': phone,
                     'email': email,
-                    'location': location,
                     'created_by': created_by,
                 },
             )
-            clients[full_name] = client
+            clients[client.full_name] = client
         return clients
 
     def _seed_deals(self, users, clients):

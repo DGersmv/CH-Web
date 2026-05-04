@@ -47,6 +47,8 @@ from deals.views import (
 from .views import (
     DealDetailView,
     DealListView,
+    client_create,
+    client_edit,
     clients_page,
     dashboard_employee_create,
     dashboard_message_send,
@@ -103,6 +105,8 @@ urlpatterns = [
     path('tasks/<int:task_id>/file/open/', open_task_file, name='task_file_open'),
     path('tasks/', TaskListView.as_view(), name='tasks'),
     path('clients/', clients_page, name='clients'),
+    path('clients/new/', client_create, name='client_create'),
+    path('clients/<int:pk>/edit/', client_edit, name='client_edit'),
     path('accounts/logout/', logout_and_redirect, name='logout'),
     path('accounts/', include('django.contrib.auth.urls')),
     path('admin/', admin.site.urls),

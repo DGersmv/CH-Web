@@ -19,6 +19,7 @@ from accounts.forms import DashboardMessageForm
 from accounts.events import create_notification, log_audit_event, push_user_event
 from accounts.models import DirectMessage, Notification
 from accounts.permissions import is_file_only_role, is_leadership
+from clients.forms import ClientForm
 from clients.models import Client
 from deals.forms import DashboardLeadForm, DealConfiguratorForm, DealFileUploadForm
 from deals.models import ChangeLog, Deal, ProjectFile, ProjectVersion
@@ -111,11 +112,25 @@ def home(request):
 
     dialog_messages = []
     if dialog_user is not None:
+        incoming_message_ids = list(
+            DirectMessage.objects.filter(
+                sender=dialog_user,
+                recipient=request.user,
+            ).values_list('id', flat=True)
+        )
         DirectMessage.objects.filter(
             sender=dialog_user,
             recipient=request.user,
             read_at__isnull=True,
         ).update(read_at=timezone.now())
+        if incoming_message_ids:
+            Notification.objects.filter(
+                user=request.user,
+                notification_type=Notification.Type.MESSAGE_RECEIVED,
+                related_model='DirectMessage',
+                related_id__in=incoming_message_ids,
+                is_read=False,
+            ).update(is_read=True, read_at=timezone.now())
         dialog_messages = (
             DirectMessage.objects.select_related('sender', 'recipient')
             .filter(
@@ -274,6 +289,33 @@ def clients_page(request):
 
 
 @login_required
+def client_create(request):
+    if request.method == 'POST':
+        form = ClientForm(request.POST)
+        if form.is_valid():
+            client = form.save(commit=False)
+            client.created_by = request.user
+            client.save()
+            return redirect('clients')
+    else:
+        form = ClientForm()
+    return render(request, 'client_form.html', {'form': form, 'is_edit': False})
+
+
+@login_required
+def client_edit(request, pk):
+    client = get_object_or_404(Client, pk=pk)
+    if request.method == 'POST':
+        form = ClientForm(request.POST, instance=client)
+        if form.is_valid():
+            form.save()
+            return redirect('clients')
+    else:
+        form = ClientForm(instance=client)
+    return render(request, 'client_form.html', {'form': form, 'client': client, 'is_edit': True})
+
+
+@login_required
 def logout_and_redirect(request):
     auth_logout(request)
     return redirect('login')
@@ -292,8 +334,13 @@ def global_search(request):
     )
     client_matches = (
         Client.objects.prefetch_related('deals')
-        .filter(full_name__icontains=query)
-        .order_by('full_name')[:5]
+        .filter(
+            Q(last_name__icontains=query)
+            | Q(first_name__icontains=query)
+            | Q(middle_name__icontains=query)
+            | Q(company_name__icontains=query)
+        )
+        .order_by('company_name', 'last_name', 'first_name')[:5]
     )
 
     results = []
@@ -313,7 +360,7 @@ def global_search(request):
             url = reverse('deal_detail', kwargs={'pk': target_deal.pk})
             subtitle = f'Клиент -> сделка {target_deal.project_code}'
         else:
-            url = reverse('clients')
+            url = reverse('client_edit', kwargs={'pk': client.pk})
             subtitle = 'Клиент (без сделок)'
         results.append(
             {
@@ -366,7 +413,10 @@ class DealListView(LoginRequiredMixin, ListView):
         if search:
             queryset = queryset.filter(
                 Q(project_code__icontains=search)
-                | Q(client__full_name__icontains=search)
+                | Q(client__last_name__icontains=search)
+                | Q(client__first_name__icontains=search)
+                | Q(client__middle_name__icontains=search)
+                | Q(client__company_name__icontains=search)
                 | Q(client__phone__icontains=search)
             )
 
@@ -404,12 +454,34 @@ class DealListView(LoginRequiredMixin, ListView):
         return params.urlencode()
 
     @staticmethod
-    def _extract_total(version):
+    def _parse_money(value):
+        if value is None:
+            return None
+        try:
+            return Decimal(str(value)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        except (InvalidOperation, ValueError, TypeError):
+            return None
+
+    @classmethod
+    def _extract_total(cls, version):
         if not version or not version.frozen_data:
             return None
         data = version.frozen_data
+        if isinstance(data, dict):
+            calc = data.get('calculation')
+            if isinstance(calc, dict):
+                totals = calc.get('totals') or {}
+                with_margin = cls._parse_money(totals.get('with_margin'))
+                if with_margin is not None:
+                    add_opts = calc.get('additional_options') or {}
+                    add_sub = cls._parse_money(add_opts.get('subtotal'))
+                    if add_sub is None:
+                        add_sub = Decimal('0.00')
+                    return (with_margin + add_sub).quantize(
+                        Decimal('0.01'),
+                        rounding=ROUND_HALF_UP,
+                    )
         candidates = (
-            ('calculation', 'totals', 'with_margin'),
             ('calculation', 'totals', 'subtotal'),
             ('calculation', 'totals', 'total'),
             ('cost_summary', 'with_margin'),

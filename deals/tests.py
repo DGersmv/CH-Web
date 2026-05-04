@@ -107,6 +107,38 @@ class BuildProjectCodeTests(TestCase):
         self.assertEqual(build_project_code_from_parts(3, '  ООО  Тест  ', ' Уч. 1 '), '3МД-ООО Тест-Уч. 1')
 
 
+class CreateDashboardLeadProjectCodeTests(TestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(username='mgr_lead', password='pass1234', role='manager')
+
+    def test_lead_project_code_uses_first_name_not_last_name(self):
+        self.client.force_login(self.user)
+        url = reverse('dashboard_lead_create')
+        response = self.client.post(
+            url,
+            {
+                'module_count': 5,
+                'last_name': 'Уточнить',
+                'first_name': 'Апатиты',
+                'middle_name': '',
+                'phone': '+79000000000',
+                'email': '',
+                'location': 'Участок1',
+                'region_or_city': '',
+                'street': '',
+                'house_number': '',
+                'comment': '',
+                'target_deal_date': '2026-05-04',
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        deal = Deal.objects.get(project_code='5МД-Апатиты-Участок1')
+        self.assertEqual(deal.code_client_name, 'Апатиты')
+        self.assertEqual(deal.client.last_name, 'Уточнить')
+        self.assertEqual(deal.client.first_name, 'Апатиты')
+
+
 class DashboardLeadFormTests(TestCase):
     def test_phone_defaults_to_plus7_when_empty(self):
         form = DashboardLeadForm(

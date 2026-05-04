@@ -65,7 +65,9 @@ class DealCreateForm(forms.ModelForm):
     new_client_name = forms.CharField(
         required=False,
         label='Новый клиент (если нет в списке)',
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ФИО или название клиента'}),
+        widget=forms.TextInput(
+            attrs={'class': 'form-control', 'placeholder': 'Напр. Иванов Иван Иванович или ООО «Ромашка»'}
+        ),
     )
 
     class Meta:
@@ -83,7 +85,7 @@ class DealCreateForm(forms.ModelForm):
             'code_client_name': forms.TextInput(
                 attrs={
                     'class': 'form-control',
-                    'placeholder': 'Напр. Иванов или ООО «Ромашка»',
+                    'placeholder': 'Напр. Иван или ООО «Ромашка»',
                     'autocomplete': 'off',
                 }
             ),
@@ -100,7 +102,7 @@ class DealCreateForm(forms.ModelForm):
         }
         labels = {
             'module_count': 'Количество модулей',
-            'code_client_name': 'Фамилия или название компании',
+            'code_client_name': 'Имя или название компании',
             'code_site_name': 'Название участка',
             'project_code': 'Код проекта',
         }
@@ -110,7 +112,7 @@ class DealCreateForm(forms.ModelForm):
         self.fields['client'].required = False
         self.fields['assigned_manager'].required = False
         self.fields['project_code'].required = False
-        self.fields['client'].queryset = Client.objects.order_by('full_name')
+        self.fields['client'].queryset = Client.objects.order_by('company_name', 'last_name', 'first_name', 'middle_name')
         self.fields['assigned_manager'].queryset = get_user_model().objects.filter(role='manager').order_by('username')
 
     def clean(self):
@@ -125,7 +127,7 @@ class DealCreateForm(forms.ModelForm):
         client_part = (cleaned.get('code_client_name') or '').strip()
         site_part = (cleaned.get('code_site_name') or '').strip()
         if not client_part:
-            self.add_error('code_client_name', 'Укажите фамилию или название компании.')
+            self.add_error('code_client_name', 'Укажите имя или название компании.')
         if not site_part:
             self.add_error('code_site_name', 'Укажите название участка.')
         if 'code_client_name' in self.errors or 'code_site_name' in self.errors:
@@ -140,7 +142,7 @@ class DealCreateForm(forms.ModelForm):
         if Deal.objects.filter(project_code_normalized=norm).exists():
             self.add_error('project_code', 'Сделка с таким кодом проекта уже существует.')
         elif 'мд' not in norm:
-            self.add_error('project_code', 'Код должен содержать «МД» (например 3МД-Иванов-Пулково).')
+            self.add_error('project_code', 'Код должен содержать «МД» (например 3МД-Иван-Пулково).')
         return cleaned
 
     def save(self, commit=True):

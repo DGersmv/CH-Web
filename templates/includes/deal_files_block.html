@@ -72,7 +72,6 @@
                                 {% csrf_token %}
                                 <div class="btn-group btn-group-sm">
                                     <button type="submit" name="action" value="download" class="btn btn-outline-primary">Скачать</button>
-                                    <button type="submit" name="action" value="preview" class="btn btn-outline-secondary">Просмотреть</button>
                                     <button type="submit" name="action" value="archive" class="btn btn-outline-danger" formaction="{% url 'deal_file_bulk_action' deal.id 'client' %}" hx-post="{% url 'deal_file_bulk_action' deal.id 'client' %}" hx-target="#deal-files-block" hx-swap="outerHTML">Удалить</button>
                                 </div>
                                 <ul class="list-group list-group-flush mt-2" data-file-list="client">
@@ -163,7 +162,6 @@
                                 {% csrf_token %}
                                 <div class="btn-group btn-group-sm">
                                     <button type="submit" name="action" value="download" class="btn btn-outline-primary">Скачать</button>
-                                    <button type="submit" name="action" value="preview" class="btn btn-outline-secondary">Просмотреть</button>
                                     <button type="submit" name="action" value="archive" class="btn btn-outline-danger" formaction="{% url 'deal_file_bulk_action' deal.id 'designer' %}" hx-post="{% url 'deal_file_bulk_action' deal.id 'designer' %}" hx-target="#deal-files-block" hx-swap="outerHTML">Удалить</button>
                                 </div>
                                 <ul class="list-group list-group-flush mt-2" data-file-list="designer">
@@ -254,7 +252,6 @@
                                 {% csrf_token %}
                                 <div class="btn-group btn-group-sm">
                                     <button type="submit" name="action" value="download" class="btn btn-outline-primary">Скачать</button>
-                                    <button type="submit" name="action" value="preview" class="btn btn-outline-secondary">Просмотреть</button>
                                     <button type="submit" name="action" value="archive" class="btn btn-outline-danger" formaction="{% url 'deal_file_bulk_action' deal.id 'sales' %}" hx-post="{% url 'deal_file_bulk_action' deal.id 'sales' %}" hx-target="#deal-files-block" hx-swap="outerHTML">Удалить</button>
                                 </div>
                                 <ul class="list-group list-group-flush mt-2" data-file-list="sales">
