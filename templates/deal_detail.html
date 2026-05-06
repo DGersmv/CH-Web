@@ -52,6 +52,74 @@
             </div>
         {% endif %}
         <div class="col-12">
+            <div class="card">
+                <div class="card-header py-2">Состояние проекта</div>
+                <div class="card-body">
+                    <ul class="nav nav-tabs mb-3" id="projectStageTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="stage-negotiation-tab" data-bs-toggle="tab" data-bs-target="#stage-negotiation" type="button" role="tab" aria-controls="stage-negotiation" aria-selected="true">
+                                Переговоры и КП
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="stage-approvals-tab" data-bs-toggle="tab" data-bs-target="#stage-approvals" type="button" role="tab" aria-controls="stage-approvals" aria-selected="false">
+                                Согласования
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="stage-design-tab" data-bs-toggle="tab" data-bs-target="#stage-design" type="button" role="tab" aria-controls="stage-design" aria-selected="false">
+                                Проектирование
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="stage-contract-tab" data-bs-toggle="tab" data-bs-target="#stage-contract" type="button" role="tab" aria-controls="stage-contract" aria-selected="false">
+                                Договор и оплата
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="stage-production-tab" data-bs-toggle="tab" data-bs-target="#stage-production" type="button" role="tab" aria-controls="stage-production" aria-selected="false">
+                                Производство
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="stage-install-tab" data-bs-toggle="tab" data-bs-target="#stage-install" type="button" role="tab" aria-controls="stage-install" aria-selected="false">
+                                Монтаж / Установка
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="stage-handover-tab" data-bs-toggle="tab" data-bs-target="#stage-handover" type="button" role="tab" aria-controls="stage-handover" aria-selected="false">
+                                Сдача клиенту
+                            </button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content" id="projectStageTabsContent">
+                        <div class="tab-pane fade show active" id="stage-negotiation" role="tabpanel" aria-labelledby="stage-negotiation-tab" tabindex="0">
+                            <p class="text-muted mb-0">Раздел в разработке. Здесь объединены этапы «Лид / квалификация» и «Переговоры и КП».</p>
+                        </div>
+                        <div class="tab-pane fade" id="stage-approvals" role="tabpanel" aria-labelledby="stage-approvals-tab" tabindex="0">
+                            <p class="text-muted mb-0">Раздел в разработке. Здесь будут инструменты этапа «Согласования».</p>
+                        </div>
+                        <div class="tab-pane fade" id="stage-design" role="tabpanel" aria-labelledby="stage-design-tab" tabindex="0">
+                            <p class="text-muted mb-0">Раздел в разработке. Здесь будут инструменты этапа "Проектирование".</p>
+                        </div>
+                        <div class="tab-pane fade" id="stage-contract" role="tabpanel" aria-labelledby="stage-contract-tab" tabindex="0">
+                            <p class="text-muted mb-0">Раздел в разработке. Здесь будут инструменты этапа "Договор и оплата".</p>
+                        </div>
+                        <div class="tab-pane fade" id="stage-production" role="tabpanel" aria-labelledby="stage-production-tab" tabindex="0">
+                            <p class="text-muted mb-0">Раздел в разработке. Здесь будут инструменты этапа "Производство".</p>
+                        </div>
+                        <div class="tab-pane fade" id="stage-install" role="tabpanel" aria-labelledby="stage-install-tab" tabindex="0">
+                            <p class="text-muted mb-0">Раздел в разработке. Здесь будут инструменты этапа "Монтаж / Установка".</p>
+                        </div>
+                        <div class="tab-pane fade" id="stage-handover" role="tabpanel" aria-labelledby="stage-handover-tab" tabindex="0">
+                            <p class="text-muted mb-0">Раздел в разработке. Здесь будут инструменты этапа "Сдача клиенту".</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12">
             {% include "includes/deal_files_block.html" with deal=deal client_files=client_files designer_files=designer_files sales_files=sales_files client_upload_form=client_upload_form designer_upload_form=designer_upload_form sales_upload_form=sales_upload_form %}
         </div>
 
