@@ -2,6 +2,14 @@
 
 Внутренняя CRM для компании модульных домов (Django + Postgres + Docker).
 
+## Документация
+
+- `ARCHITECTURE.md` — актуальная карта доменных сущностей, ролей, стек и ограничения.
+- `docs/plugin-api-contract.md` — контракт ArchiCAD-плагина для создания версий проекта.
+- `docs/collaboration-api.md` — REST и WebSocket интерфейсы сообщений/уведомлений.
+- `docs/project-files-runbook.md` — схема хранения файлов сделки и операционные проверки.
+- `docs/excel-formula-spec.md` — соответствие Excel-строк и расчётного движка.
+
 ## Запуск проекта
 
 1. Убедись, что Docker Desktop запущен (Engine running).
@@ -11,11 +19,13 @@
 
 ```bash
 docker compose up -d
-```
 docker compose exec app python manage.py migrate
 docker compose restart app
+```
 
 Приложение доступно на `http://localhost:8001`, Postgres проброшен на `localhost:5433`.
+
+В Compose также поднимается Redis (`redis://redis:6379/0`). Он нужен Django Channels для WebSocket-событий уведомлений и сообщений; если Redis недоступен, HTTP-интерфейс может открываться, но realtime-уведомления работать не будут.
 
 Если меняли Python-код или `urls.py`, а интерфейс как будто старый, перезапустите приложение (Daphne сам код не подхватывает):
 
@@ -42,12 +52,15 @@ docker compose exec app python manage.py migrate
 docker compose exec app python manage.py seed_demo_data
 ```
 
+Для автозапуска сидов при старте контейнера можно выставить `DJANGO_SEED_DEMO_DATA=1` в окружении сервиса `app` в `docker-compose.yml`. Не включайте это на боевой базе без явного решения команды.
+
 ## Типовая проверка после деплоя на сервер
 
 ```bash
 docker compose config
 docker compose ps
 docker compose logs app --tail=120
+docker compose logs redis --tail=80
 docker compose exec app python manage.py showmigrations
 docker compose exec db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select count(*) from catalog_costitem;"
 curl -I http://localhost:8001/static/img/logo.jpg
@@ -84,15 +97,26 @@ docker compose exec app python manage.py createsuperuser
 
 Админка: `http://localhost:8001/admin/`
 
+## DRF token для интеграций
+
+Публичные JSON-интерфейсы используют DRF Token auth (`Authorization: Token <token>`). Для пользователя плагина или сервисного клиента:
+
+```bash
+docker compose exec app python manage.py drf_create_token <username>
+```
+
+Токен даёт доступ к API от имени этого пользователя; храните его как секрет и перевыпускайте при компрометации.
+
 ## Файловое хранилище
 
 - По умолчанию проект хранит файлы в `crm_files` внутри корня репозитория.
 - Переопределить корень можно через переменную окружения `CRM_FILES_ROOT`.
 - Файлы раскладываются по структуре клиент/проект/источник (заказчик или проектировщик), пути в БД сохраняются относительными.
+- Подробности по каталогам, архивированию и проверкам — в `docs/project-files-runbook.md`.
 
 ## Состояние проекта
 
-Планируемая структура вкладок по этапам:
+На странице сделки есть каркас вкладок по этапам. Сейчас вкладки фиксируют навигационную структуру, а рабочие блоки сделки (файлы, задачи, версии, журнал изменений, расчёт) остаются ниже:
 
 1. `Переговоры и КП` — объединяет лид / квалификацию и переговоры с коммерческим предложением
 2. `Согласования`
