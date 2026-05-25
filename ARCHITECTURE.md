@@ -22,12 +22,23 @@
 ## 3. Ключевые концепции
 
 ### Проект, сделка, версия
-- **Deal (Сделка)** — основная сущность. Один клиент — одна сделка. Имеет `project_code` вида "3МД Иванов Пулково" (уникальный бизнес-ключ).
+- **Deal (Сделка)** — основная сущность. Один клиент — одна сделка. Имеет `project_code` как уникальный бизнес-ключ. Для сделок, созданных через UI, код собирается в формате `3МД-Иванов-Пулково`; API плагина принимает строковый код из payload и ищет сделку по нормализованному значению (`lower + trim + схлопывание пробелов`).
 - **ProjectVersion (Версия проекта)** — итерация расчёта. Каждая сделка имеет много версий, каждая версия — иммутабельный снэпшот конфигурации и цен на момент отправки клиенту.
 - **Client (Клиент)** — физлицо или компания, заказчик.
 
 ### Количество модулей
-Метка "3МД", "5МД", "7МД" и т.д. означает количество модулей в доме (от 1 до ~15, рекорд 11). Хранится как простое число `module_count` на Deal. Это **не** ссылка на каталог моделей — каталога нет, каждый дом индивидуальный. Используется только для фильтрации и аналитики.
+Метка "3МД", "5МД", "7МД" и т.д. означает количество модулей в доме. Хранится как простое число `module_count` на Deal. Это **не** ссылка на каталог моделей — каталога нет, каждый дом индивидуальный. Используется для фильтрации, аналитики и сборки `project_code`.
+
+Текущий код допускает `module_count = 0` для ранних лидов из dashboard, когда число модулей ещё неизвестно. Плагин ArchiCAD по REST API строже: принимает только целые значения `1..15`.
+
+### Смета, санузлы и дополнительные опции
+Основной расчёт повторяет Excel-смету версии `excel-v1` через `deals/services/calculation_engine.py`. Последние входные значения и результат сохраняются в draft `ProjectVersion.frozen_data`.
+
+Санузлы и дополнительные опции — это не глобальная правка каталога, а строки-снимки внутри конкретной draft-версии:
+- `DealBathroom` / `DealBathroomLine` создаются из секции каталога `bathroom_template_v1` по количеству санузлов в D37.
+- `DealAdditionalOptionLine` создаётся из секции `additional_options_template_v1`; пользовательские опции сохраняются в версии без `CostItem`.
+- Суммы санузлов входят в основную смету через строки `plumbing` и `bathroom_equipment`.
+- Дополнительные опции считаются и показываются отдельным блоком; они не входят в `subtotal` и итог с наценкой основной сметы.
 
 ### Интеграция с ArchiCAD
 Плагин ArchiCAD (пишется отдельно на C++) подключается к CRM по REST API. Отправляет:
@@ -71,9 +82,11 @@ Client
   - ФИО, телефон, email, участок (дополнительно введем поля для заполения договоров, актов итп)
 
 Deal
-  - project_code (unique)        "3МД Иванов Пулково"
+  - project_code (unique)        "3МД-Иванов-Пулково"
   - project_code_normalized      для поиска, lowercase+trim
-  - module_count                  1..15
+  - code_client_name              часть кода проекта
+  - code_site_name                часть кода проекта
+  - module_count                  0..15 в UI, 1..15 для payload ArchiCAD
   - client                       FK → Client (nullable для orphan)
   - status                       'orphan'|'new'|'qualified'|'sent_quote'|...
   - assigned_manager             FK → User
@@ -111,6 +124,50 @@ CostItem (справочник позиций, редактируется в а�
   - price_work
   - formula_multiplier           опциональная формула, например "ceiling_height + 0.95"
   - is_active
+  - section                      FK → Section (nullable)
+  - kind                         'material'|'work'|'mixed'
+  - default_included
+
+Section
+  - code                         "bathroom_template_v1", "additional_options_template_v1"
+  - name_ru
+  - kind
+  - sort_order
+
+CostItemOption
+  - cost_item                    FK → CostItem
+  - code                         unique внутри CostItem
+  - name_ru, manufacturer, article, country
+  - unit, price, description
+  - is_default, is_active
+
+DealBathroom
+  - deal                         FK → Deal
+  - project_version              FK → ProjectVersion
+  - index                        номер вкладки санузла в версии
+  - label
+
+DealBathroomLine
+  - bathroom                     FK → DealBathroom
+  - cost_item                    FK → CostItem (PROTECT, nullable)
+  - selected_option              FK → CostItemOption (nullable)
+  - name_snapshot
+  - kind                         'material'|'work'|'mixed'
+  - is_included
+  - quantity
+  - unit_price
+  - sort_order
+
+DealAdditionalOptionLine
+  - project_version              FK → ProjectVersion
+  - cost_item                    FK → CostItem (PROTECT, nullable)
+  - name_snapshot
+  - kind                         'material'|'work'|'mixed'
+  - is_included
+  - quantity
+  - unit_price
+  - unit_snapshot
+  - sort_order
 
 Task (задачи менеджера)
   - deal                         FK → Deal
@@ -135,15 +192,17 @@ User (расширение стандартного Django User)
 
 ## 6. Ключевые бизнес-правила (что легко забыть)
 
-1. `project_code` — уникальный, регистронезависимый для поиска. Формат "{модули}МД {Фамилия} {Локация}".
-2. `module_count` — целое число 1..15. Не ссылка на каталог.
+1. `project_code` — уникальный, регистронезависимый для поиска. UI-формат: "{модули}МД-{Имя/компания}-{Участок}".
+2. `module_count` — целое число 0..15 в UI; 0 означает ранний лид без выбранного количества модулей. Для ArchiCAD payload действует 1..15. Не ссылка на каталог.
 3. Каждая отправка из ArchiCAD = новая ProjectVersion. Всегда.
 4. После отправки КП клиенту текущая draft замораживается, автоматически создаётся новая draft.
 5. Замороженные версии (status != draft) **иммутабельны**. Никогда не редактируются.
 6. Плагин не шлёт мебель — только конструктив, который влияет на цену.
-7. Все цены при создании ProjectVersion копируются снэпшотом в frozen_data. Изменение CostItem в будущем **не меняет** старые версии.
-8. Наценка — параметр на Deal, не в формуле.
-9. Все роли видят разные наборы полей — проектировщик не видит коммерцию, менеджер не правит чужие сделки.
+7. Draft-смета хранит входы и результат расчёта в `ProjectVersion.frozen_data`; строки санузлов и дополнительных опций хранят снимки названия/количества/цены на уровне версии.
+8. Изменение CostItem или CostItemOption в будущем **не переписывает** уже созданные строки версий.
+9. Наценка — параметр на Deal, не в формуле.
+10. Дополнительные опции показываются отдельно от основной сметы и не входят в итог с наценкой основной сметы.
+11. Все роли видят разные наборы полей — проектировщик не видит коммерцию, менеджер не правит чужие сделки.
 
 ## 7. Что делать, если AI предлагает противоречащее этому документу
 
