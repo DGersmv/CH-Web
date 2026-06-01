@@ -15,7 +15,8 @@ docker compose up -d
 docker compose exec app python manage.py migrate
 docker compose restart app
 
-Приложение доступно на `http://localhost:8001`, Postgres проброшен на `localhost:5433`.
+Приложение доступно на `http://localhost:8001`, Postgres проброшен на `localhost:5433`, Redis — на `localhost:6379`.
+Контейнер `app` запускает ASGI-приложение через Daphne (`core.asgi:application`); Redis нужен для Channels/WebSocket-уведомлений.
 
 Если меняли Python-код или `urls.py`, а интерфейс как будто старый, перезапустите приложение (Daphne сам код не подхватывает):
 
