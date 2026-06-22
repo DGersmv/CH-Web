@@ -1,6 +1,6 @@
 # CH-Web
 
-Внутренняя CRM для компании модульных домов (Django + Postgres + Docker).
+Внутренняя CRM для компании модульных домов (Django + Postgres + Redis + Docker).
 
 ## Запуск проекта
 
@@ -11,11 +11,11 @@
 
 ```bash
 docker compose up -d
-```
 docker compose exec app python manage.py migrate
 docker compose restart app
+```
 
-Приложение доступно на `http://localhost:8001`, Postgres проброшен на `localhost:5433`.
+Приложение доступно на `http://localhost:8001`, Postgres проброшен на `localhost:5433`, Redis — на `localhost:6379`. Контейнер `app` запускает ASGI через Daphne (`core.asgi:application`), потому что уведомления используют Django Channels.
 
 Если меняли Python-код или `urls.py`, а интерфейс как будто старый, перезапустите приложение (Daphne сам код не подхватывает):
 
@@ -89,6 +89,12 @@ docker compose exec app python manage.py createsuperuser
 - По умолчанию проект хранит файлы в `crm_files` внутри корня репозитория.
 - Переопределить корень можно через переменную окружения `CRM_FILES_ROOT`.
 - Файлы раскладываются по структуре клиент/проект/источник (заказчик или проектировщик), пути в БД сохраняются относительными.
+
+## Техническая документация
+
+- `ARCHITECTURE.md` — текущая модель системы, роли, ключевые URL и ограничения.
+- `docs/excel-formula-spec.md` — контракт ручного конфигуратора, Excel-parity расчёт, санузлы и дополнительные опции.
+- `docs/plugin-api-contract.md` — контракт ingest API для ArchiCAD-плагина.
 
 ## Состояние проекта
 
