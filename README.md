@@ -25,6 +25,13 @@ docker compose restart app
 
 После правок шаблонов обычно достаточно обновить страницу в браузере (при необходимости с принудительным сбросом кэша: Ctrl+F5).
 
+## Техническая документация
+
+- `ARCHITECTURE.md` — общий контекст системы, роли, ключевые сущности и бизнес-правила.
+- `docs/plugin-api-contract.md` — контракт API для интеграции с ArchiCAD.
+- `docs/excel-formula-spec.md` — соответствие Excel-формул и расчётного движка.
+- `docs/collaboration-events.md` — личные сообщения, уведомления, аудит и WebSocket-доставка.
+
 ### Команды `manage.py` с Windows вне Docker
 
 Тогда `python manage.py migrate` ругается на отсутствие Django: либо активируйте venv с зависимостями (`python -m venv .venv`, затем `.\.venv\Scripts\pip install -r requirements.txt`), либо **выполняйте команды внутри контейнера** (так надёжнее, БД доступна по имени `db`):
