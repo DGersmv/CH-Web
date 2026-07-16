@@ -6,12 +6,15 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from system_settings.authentication import IntegrationTokenAuthentication
+from system_settings.events import record_domain_event
+
 from .models import Deal, ProjectFile, ProjectVersion, normalize_project_code
 from .services.storage_paths import ensure_deal_dirs, get_files_root, get_version_root
 
 
 class PluginProjectVersionCreateApi(APIView):
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [IntegrationTokenAuthentication, TokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -61,6 +64,18 @@ class PluginProjectVersionCreateApi(APIView):
                 uploaded_by=request.user,
             )
         version.save(update_fields=['frozen_data', 'plan_pdf_path'])
+        record_domain_event(
+            actor=request.user,
+            event_type='project_version.imported',
+            entity_model='ProjectVersion',
+            entity_id=version.id,
+            payload={
+                'deal_id': deal.id,
+                'project_code': deal.project_code,
+                'source': payload['source'],
+                'created_deal': created_deal,
+            },
+        )
 
         return Response(
             {

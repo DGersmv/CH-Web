@@ -35,6 +35,7 @@ def ensure_deal_dirs(deal) -> None:
     for suffix in (
         Path("incoming/client/photos"),
         Path("incoming/client/docs"),
+        Path("incoming/client/voice"),
         Path("incoming/designer/plans_pdf"),
         Path("incoming/designer/dwg"),
         Path("incoming/designer/reference"),
@@ -54,3 +55,21 @@ def ensure_version_dirs(project_version) -> None:
         Path("quote"),
     ):
         (version_root / suffix).mkdir(parents=True, exist_ok=True)
+
+
+def ensure_library_dirs() -> None:
+    library_root = get_files_root() / "library"
+    for section in ("layouts", "photos", "videos"):
+        for module_group in ("m1", "m2", "m3", "m4", "m5", "m6plus"):
+            (library_root / section / module_group).mkdir(parents=True, exist_ok=True)
+    (library_root / "contracts").mkdir(parents=True, exist_ok=True)
+    for supplier_category in (
+        "finishing",
+        "plumbing",
+        "electrical",
+        "floor_heating",
+        "stoves_fireplaces",
+        "windows",
+        "furniture",
+    ):
+        (library_root / "suppliers" / supplier_category).mkdir(parents=True, exist_ok=True)

@@ -1,0 +1,107 @@
+{% extends "system_settings/base.html" %}
+{% load system_settings_extras %}
+
+{% block settings_content %}
+    <div class="card mb-4">
+        <div class="card-header">Новый сотрудник</div>
+        <div class="card-body">
+            <form method="post" class="row g-3">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="create">
+                <div class="col-md-4">
+                    <label class="form-label">Логин</label>
+                    {{ employee_create_form.username }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Имя</label>
+                    {{ employee_create_form.first_name }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Фамилия</label>
+                    {{ employee_create_form.last_name }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Email</label>
+                    {{ employee_create_form.email }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Роль</label>
+                    {{ employee_create_form.role }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Пароль</label>
+                    {{ employee_create_form.password }}
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <div class="form-check">
+                        {{ employee_create_form.is_active }}
+                        <label class="form-check-label">Активен</label>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">Добавить сотрудника</button>
+                </div>
+                {% if employee_create_form.errors %}
+                    <div class="col-12 text-danger small">{{ employee_create_form.errors }}</div>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">Текущие сотрудники</div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Логин</th>
+                            <th>ФИО</th>
+                            <th>Email</th>
+                            <th>Роль</th>
+                            <th>Активен</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for employee in employees %}
+                            {% with update_form=employee_update_forms|get_item:employee.id %}
+                            <tr>
+                                <td>{{ employee.username }}</td>
+                                <td>{{ employee.first_name }} {{ employee.last_name }}</td>
+                                <td>{{ employee.email|default:"—" }}</td>
+                                <td colspan="3">
+                                    <form method="post" class="row g-2 align-items-center">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="action" value="update">
+                                        <input type="hidden" name="employee_id" value="{{ employee.id }}">
+                                        <div class="col-md-5">
+                                            {{ update_form.role }}
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="form-check mt-2">
+                                                {{ update_form.is_active }}
+                                                <label class="form-check-label">Активен</label>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4 text-end">
+                                            <button type="submit" class="btn btn-sm btn-outline-primary">Сохранить</button>
+                                        </div>
+                                        {% if update_form.errors %}
+                                            <div class="col-12 text-danger small">{{ update_form.errors }}</div>
+                                        {% endif %}
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endwith %}
+                        {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-muted text-center py-4">Сотрудники пока не заведены.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+{% endblock %}

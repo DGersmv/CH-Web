@@ -10,8 +10,9 @@ from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_http_methods, require_POST
 from django.views.generic import TemplateView
 
-from accounts.events import create_notification, log_audit_event
+from accounts.events import create_notification
 from deals.models import Deal, ProjectFile
+from system_settings.events import record_domain_event
 
 from .forms import DealTaskCreateForm
 from .models import Task
@@ -54,7 +55,7 @@ def toggle_task(request, task_id):
     task = get_object_or_404(Task.objects.select_related('deal', 'assignee'), pk=task_id)
     if not task.is_done:
         task.mark_done()
-        log_audit_event(
+        record_domain_event(
             actor=request.user,
             event_type='task.completed',
             entity_model='Task',
@@ -117,7 +118,7 @@ def create_task_for_deal(request, deal_id):
                     related_model='Task',
                     related_id=task.id,
                 )
-            log_audit_event(
+            record_domain_event(
                 actor=request.user,
                 event_type='task.created',
                 entity_model='Task',

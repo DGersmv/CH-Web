@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import ChangeLog, Deal, ProjectFile, ProjectVersion
+from .models import ChangeLog, Deal, LibraryAsset, ProjectFile, ProjectVersion
 
 
 class ProjectVersionInline(admin.TabularInline):
@@ -67,4 +67,12 @@ class ProjectFileAdmin(admin.ModelAdmin):
     list_display = ('deal', 'source', 'category', 'original_name', 'is_archived', 'updated_at')
     list_filter = ('source', 'category', 'is_archived', 'updated_at')
     search_fields = ('deal__project_code', 'original_name', 'relative_path')
+    ordering = ('-updated_at',)
+
+
+@admin.register(LibraryAsset)
+class LibraryAssetAdmin(admin.ModelAdmin):
+    list_display = ('section', 'module_group', 'supplier_category', 'original_name', 'uploaded_by', 'created_at', 'updated_at')
+    list_filter = ('section', 'module_group', 'supplier_category', 'created_at', 'updated_at')
+    search_fields = ('original_name', 'relative_path', 'mime_type', 'ext')
     ordering = ('-updated_at',)

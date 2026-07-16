@@ -342,3 +342,160 @@ class ProjectFile(models.Model):
         from .services.storage_paths import get_files_root
 
         return get_files_root() / self.relative_path
+
+
+class LibraryAsset(models.Model):
+    class Section(models.TextChoices):
+        LAYOUT = 'layout', 'Планировки'
+        CONTRACT_TEMPLATE = 'contract_template', 'Шаблоны договоров'
+        PHOTO = 'photo', 'Фото'
+        VIDEO = 'video', 'Видео'
+        SUPPLIER_FILE = 'supplier_file', 'Файлы поставщиков'
+
+    class ModuleGroup(models.TextChoices):
+        M1 = 'm1', '1 Модуль'
+        M2 = 'm2', '2 Модуля'
+        M3 = 'm3', '3 Модуля'
+        M4 = 'm4', '4 Модуля'
+        M5 = 'm5', '5 Модулей'
+        M6PLUS = 'm6plus', '6+ Модулей'
+
+    class SupplierCategory(models.TextChoices):
+        FINISHING = 'finishing', 'Отделка'
+        PLUMBING = 'plumbing', 'Сантехника'
+        ELECTRICAL = 'electrical', 'Электрика'
+        FLOOR_HEATING = 'floor_heating', 'Теплые полы'
+        STOVES_FIREPLACES = 'stoves_fireplaces', 'Печи и Камины'
+        WINDOWS = 'windows', 'Окна'
+        FURNITURE = 'furniture', 'Мебель'
+
+    section = models.CharField(max_length=20, choices=Section.choices)
+    module_group = models.CharField(max_length=20, choices=ModuleGroup.choices)
+    supplier_category = models.CharField(max_length=30, choices=SupplierCategory.choices, blank=True, default='')
+    relative_path = models.CharField(max_length=500)
+    original_name = models.CharField(max_length=255)
+    size_bytes = models.PositiveBigIntegerField(default=0)
+    mime_type = models.CharField(max_length=150, blank=True)
+    ext = models.CharField(max_length=20, blank=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='uploaded_library_assets',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['section', 'module_group', '-updated_at'], name='library_asset_list_idx'),
+        ]
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return self.original_name
+
+    @property
+    def absolute_path(self) -> Path:
+        from .services.storage_paths import get_files_root
+
+        return get_files_root() / self.relative_path
+
+
+class DealClientPortalOtp(models.Model):
+    """One-time code issued for a deal client portal login."""
+
+    deal = models.ForeignKey(Deal, on_delete=models.CASCADE, related_name='client_portal_otps')
+    email = models.EmailField()
+    code_hash = models.CharField(max_length=128)
+    expires_at = models.DateTimeField()
+    attempts_left = models.PositiveSmallIntegerField(default=5)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['deal', 'email', '-created_at'], name='deal_portal_otp_lookup_idx'),
+            models.Index(fields=['expires_at'], name='deal_portal_otp_exp_idx'),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'OTP {self.deal_id} {self.email}'
+
+
+class DealClientPortalSession(models.Model):
+    """Session for a deal client portal, stored as hashed token."""
+
+    deal = models.ForeignKey(Deal, on_delete=models.CASCADE, related_name='client_portal_sessions')
+    email = models.EmailField()
+    session_token_hash = models.CharField(max_length=128, db_index=True)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['deal', 'email', '-created_at'], name='deal_portal_sess_lookup_idx'),
+            models.Index(fields=['expires_at'], name='deal_portal_sess_exp_idx'),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Session {self.deal_id} {self.email}'
+
+
+class DealClientMessage(models.Model):
+    class AuthorType(models.TextChoices):
+        CLIENT = 'client', 'Client'
+        STAFF = 'staff', 'Staff'
+
+    deal = models.ForeignKey(Deal, on_delete=models.CASCADE, related_name='client_messages')
+    author_type = models.CharField(max_length=20, choices=AuthorType.choices)
+    author_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='deal_client_messages',
+    )
+    author_email = models.EmailField(blank=True, default='')
+    body = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['deal', '-created_at'], name='deal_client_msg_list_idx'),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.deal_id} {self.author_type} #{self.id}'
+
+
+class DealClientMessageAttachment(models.Model):
+    class Kind(models.TextChoices):
+        PROJECT_FILE = 'project_file', 'Project file'
+        VOICE = 'voice', 'Voice'
+
+    message = models.ForeignKey(DealClientMessage, on_delete=models.CASCADE, related_name='attachments')
+    kind = models.CharField(max_length=30, choices=Kind.choices)
+    project_file = models.ForeignKey(
+        ProjectFile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='client_message_attachments',
+    )
+    mime_type = models.CharField(max_length=150, blank=True, default='')
+    duration_ms = models.PositiveIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['message', 'kind'], name='deal_client_att_msg_kind_idx'),
+        ]
+        ordering = ['id']
+
+    def __str__(self):
+        return f'Attachment {self.kind} for msg {self.message_id}'

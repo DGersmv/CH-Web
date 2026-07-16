@@ -1,5 +1,7 @@
+import mimetypes
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from pathlib import Path
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
@@ -7,7 +9,7 @@ from django.contrib.auth import logout as auth_logout
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Prefetch
 from django.db.models import Q
-from django.http import HttpResponseForbidden
+from django.http import FileResponse, Http404, HttpResponseBadRequest, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -22,10 +24,12 @@ from accounts.permissions import is_file_only_role, is_leadership
 from clients.forms import ClientForm
 from clients.models import Client
 from deals.forms import DashboardLeadForm, DealConfiguratorForm, DealFileUploadForm
-from deals.models import ChangeLog, Deal, ProjectFile, ProjectVersion
+from deals.models import ChangeLog, Deal, DealClientMessage, LibraryAsset, ProjectFile, ProjectVersion
+from deals.services.storage_paths import ensure_library_dirs, get_files_root
 from deals.views import _files_context
 from deals.services.bathrooms import bathrooms_button_enabled
 from deals.services.calculation_engine import calculate_config
+from system_settings.events import record_domain_event
 from tasks.models import Task
 
 
@@ -286,6 +290,182 @@ def clients_page(request):
         .order_by('-created_at')
     )
     return render(request, 'client_list.html', {'clients': clients})
+
+
+@login_required
+def files_page(request):
+    query_string = request.GET.urlencode()
+    target_url = reverse('settings_library')
+    if query_string:
+        target_url = f'{target_url}?{query_string}'
+    return redirect(target_url)
+
+
+def _normalize_upload_name(filename: str) -> str:
+    safe = ''.join(ch for ch in filename if ch not in '/\\').strip()
+    return safe or 'file.bin'
+
+
+def _library_section_dir(section: str) -> str:
+    mapping = {
+        LibraryAsset.Section.LAYOUT: 'layouts',
+        LibraryAsset.Section.CONTRACT_TEMPLATE: 'contracts',
+        LibraryAsset.Section.PHOTO: 'photos',
+        LibraryAsset.Section.VIDEO: 'videos',
+        LibraryAsset.Section.SUPPLIER_FILE: 'suppliers',
+    }
+    return mapping[section]
+
+
+def _section_uses_module_groups(section: str) -> bool:
+    return section in {
+        LibraryAsset.Section.LAYOUT,
+        LibraryAsset.Section.PHOTO,
+        LibraryAsset.Section.VIDEO,
+    }
+
+
+def _section_uses_supplier_tabs(section: str) -> bool:
+    return section == LibraryAsset.Section.SUPPLIER_FILE
+
+
+def _is_allowed_library_upload(section: str, ext: str) -> bool:
+    if section == LibraryAsset.Section.LAYOUT:
+        return ext in {'.pdf', '.jpg', '.jpeg', '.png', '.webp'}
+    if section == LibraryAsset.Section.CONTRACT_TEMPLATE:
+        return ext in {
+            '.pdf',
+            '.doc',
+            '.docx',
+            '.xls',
+            '.xlsx',
+            '.ppt',
+            '.pptx',
+            '.odt',
+            '.ods',
+            '.odp',
+            '.rtf',
+            '.txt',
+        }
+    if section == LibraryAsset.Section.PHOTO:
+        return ext in {'.jpg', '.jpeg', '.png', '.webp', '.gif'}
+    if section == LibraryAsset.Section.VIDEO:
+        return ext in {'.mp4', '.webm', '.mov', '.avi', '.mkv'}
+    if section == LibraryAsset.Section.SUPPLIER_FILE:
+        return ext in {
+            '.pdf',
+            '.jpg',
+            '.jpeg',
+            '.png',
+            '.webp',
+            '.gif',
+            '.doc',
+            '.docx',
+            '.xls',
+            '.xlsx',
+            '.ppt',
+            '.pptx',
+            '.odt',
+            '.ods',
+            '.odp',
+            '.rtf',
+            '.txt',
+            '.mp4',
+            '.webm',
+            '.mov',
+            '.avi',
+            '.mkv',
+        }
+    return False
+
+
+@login_required
+@require_POST
+def library_asset_upload(request):
+    section = (request.POST.get('section') or '').strip()
+    module_group = (request.POST.get('module_group') or '').strip()
+    supplier_category = (request.POST.get('supplier_category') or '').strip()
+    upload = request.FILES.get('upload')
+    redirect_base = (request.POST.get('redirect_to') or '').strip() or reverse('settings_library')
+    if not redirect_base.startswith('/'):
+        redirect_base = reverse('settings_library')
+    if not upload:
+        return redirect(f"{redirect_base}?section={section}&module_group={module_group}&error=Не выбран файл")
+    valid_sections = {value for value, _ in LibraryAsset.Section.choices}
+    valid_groups = {value for value, _ in LibraryAsset.ModuleGroup.choices}
+    valid_supplier_categories = {value for value, _ in LibraryAsset.SupplierCategory.choices}
+    if section not in valid_sections:
+        return HttpResponseBadRequest('Invalid upload target')
+    if _section_uses_module_groups(section):
+        if module_group not in valid_groups:
+            return HttpResponseBadRequest('Invalid upload target')
+    else:
+        module_group = LibraryAsset.ModuleGroup.M1
+    if _section_uses_supplier_tabs(section):
+        if supplier_category not in valid_supplier_categories:
+            return HttpResponseBadRequest('Invalid upload target')
+    else:
+        supplier_category = ''
+
+    original_name = _normalize_upload_name(upload.name)
+    ext = Path(original_name).suffix.lower()
+    if not _is_allowed_library_upload(section, ext):
+        return redirect(
+            f"{redirect_base}?section={section}&module_group={module_group}&error=Недопустимый формат файла"
+        )
+
+    ensure_library_dirs()
+    stamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'{stamp}_{module_group}_{original_name}'
+    relative_path = Path('library') / _library_section_dir(section)
+    if _section_uses_module_groups(section):
+        relative_path = relative_path / module_group
+    if _section_uses_supplier_tabs(section):
+        relative_path = relative_path / supplier_category
+    relative_path = relative_path / filename
+    absolute_path = get_files_root() / relative_path
+    absolute_path.parent.mkdir(parents=True, exist_ok=True)
+    with absolute_path.open('wb+') as destination:
+        for chunk in upload.chunks():
+            destination.write(chunk)
+
+    asset = LibraryAsset.objects.create(
+        section=section,
+        module_group=module_group,
+        supplier_category=supplier_category,
+        relative_path=str(relative_path).replace('\\', '/'),
+        original_name=original_name,
+        size_bytes=upload.size,
+        mime_type=(getattr(upload, 'content_type', '') or mimetypes.guess_type(original_name)[0] or ''),
+        ext=ext.lstrip('.'),
+        uploaded_by=request.user,
+    )
+    record_domain_event(
+        actor=request.user,
+        event_type='project_file.uploaded',
+        entity_model='LibraryAsset',
+        entity_id=asset.id,
+        payload={
+            'section': section,
+            'module_group': module_group,
+            'supplier_category': supplier_category,
+            'original_name': original_name,
+        },
+        request=request,
+    )
+    redirect_url = f"{redirect_base}?section={section}&module_group={module_group}"
+    if supplier_category:
+        redirect_url += f"&supplier_category={supplier_category}"
+    return redirect(redirect_url)
+
+
+@login_required
+def library_asset_download(request, asset_id):
+    asset = get_object_or_404(LibraryAsset, pk=asset_id)
+    absolute_path = asset.absolute_path
+    if not absolute_path.exists() or not absolute_path.is_file():
+        raise Http404('File not found')
+    return FileResponse(absolute_path.open('rb'), as_attachment=True, filename=asset.original_name)
 
 
 @login_required
@@ -589,6 +769,20 @@ class DealDetailView(LoginRequiredMixin, DetailView):
             'project_version', 'changed_by'
         )[:20]
         context.update(_files_context(self.object, viewer=self.request.user))
+        recent_messages_qs = (
+            DealClientMessage.objects.filter(deal=self.object)
+            .select_related('author_user')
+            .prefetch_related('attachments', 'attachments__project_file')
+            .order_by('-created_at')
+        )
+        context['client_messages_latest'] = recent_messages_qs.first()
+        context['client_messages_recent'] = list(reversed(list(recent_messages_qs[:20])))
+        context['client_portal_url'] = self.request.build_absolute_uri(
+            reverse('client_portal_entry', kwargs={'deal_id': self.object.id})
+        )
+        context['deal_project_files_for_attach'] = (
+            ProjectFile.objects.filter(deal=self.object, is_archived=False).order_by('-updated_at')[:200]
+        )
         totals = (calc_result or {}).get('totals', {}) if isinstance(calc_result, dict) else {}
         additional_options = (calc_result or {}).get('additional_options', {}) if isinstance(calc_result, dict) else {}
         materials = self._as_money_decimal(totals.get('material_total'))

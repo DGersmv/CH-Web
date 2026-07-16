@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="mb-1">Настройки системы</h1>
+            <div class="text-muted">Общие настройки, справочники и интеграции CRM.</div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-3">
+            <div class="list-group">
+                <a class="list-group-item list-group-item-action {% if settings_section == 'employees' %}active{% endif %}" href="{% url 'settings_employees' %}">Сотрудники и роли</a>
+                <a class="list-group-item list-group-item-action {% if settings_section == 'library' %}active{% endif %}" href="{% url 'settings_library' %}">Библиотека файлов</a>
+                <a class="list-group-item list-group-item-action {% if settings_section == 'catalog' %}active{% endif %}" href="{% url 'settings_catalog' %}">Каталог и опции</a>
+                <a class="list-group-item list-group-item-action {% if settings_section == 'business' %}active{% endif %}" href="{% url 'settings_business' %}">Бизнес-параметры</a>
+                <a class="list-group-item list-group-item-action {% if settings_section == 'integrations' %}active{% endif %}" href="{% url 'settings_integrations' %}">Интеграции</a>
+            </div>
+        </div>
+        <div class="col-lg-9">
+            {% block settings_content %}{% endblock %}
+        </div>
+    </div>
+{% endblock %}

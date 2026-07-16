@@ -1,0 +1,71 @@
+{% extends "system_settings/base.html" %}
+
+{% block settings_content %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="h4 mb-1">Каталог и опции</h2>
+            <div class="text-muted">Общие позиции, используемые в расчётах и наполнении проектов.</div>
+        </div>
+        <a class="btn btn-primary" href="{% url 'settings_catalog_item_create' %}">Новая позиция</a>
+    </div>
+
+    <form method="get" class="row g-2 mb-3">
+        <div class="col-md-4">
+            <input type="search" name="q" value="{{ search_query }}" class="form-control" placeholder="Поиск по коду или названию">
+        </div>
+        <div class="col-md-3">
+            <select name="section" class="form-select">
+                <option value="">Все секции</option>
+                {% for section in sections %}
+                    <option value="{{ section.code }}" {% if selected_section == section.code %}selected{% endif %}>{{ section.code }} — {{ section.name_ru }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <select name="category" class="form-select">
+                <option value="">Все категории</option>
+                {% for value, label in category_choices %}
+                    <option value="{{ value }}" {% if selected_category == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2 d-grid">
+            <button type="submit" class="btn btn-outline-secondary">Фильтр</button>
+        </div>
+    </form>
+
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Код</th>
+                        <th>Наименование</th>
+                        <th>Секция</th>
+                        <th>Категория</th>
+                        <th>Опции</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                        <tr>
+                            <td><code>{{ item.code }}</code></td>
+                            <td>{{ item.name_ru }}</td>
+                            <td>{{ item.section.code|default:"—" }}</td>
+                            <td>{{ item.get_category_display }}</td>
+                            <td>{{ item.options_count }}</td>
+                            <td class="text-end">
+                                <a class="btn btn-sm btn-outline-primary" href="{% url 'settings_catalog_item_detail' item.id %}{% if query_string %}?{{ query_string }}{% endif %}">Открыть</a>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-4">Позиции каталога не найдены.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock %}

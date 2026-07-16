@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="mb-0">Файлы</h1>
+    </div>
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item">
+            <a class="nav-link {% if active_section == 'layout' %}active{% endif %}" href="{% url 'files' %}?section=layout&module_group={{ active_module_group }}">Планировки</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if active_section == 'contract_template' %}active{% endif %}" href="{% url 'files' %}?section=contract_template">Шаблоны договоров</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if active_section == 'photo' %}active{% endif %}" href="{% url 'files' %}?section=photo&module_group={{ active_module_group }}">Фото</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if active_section == 'video' %}active{% endif %}" href="{% url 'files' %}?section=video&module_group={{ active_module_group }}">Видео</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if active_section == 'supplier_file' %}active{% endif %}" href="{% url 'files' %}?section=supplier_file&supplier_category={{ active_supplier_category }}">Файлы поставщиков</a>
+        </li>
+    </ul>
+
+    {% if uses_module_groups %}
+        <ul class="nav nav-pills mb-3">
+            {% for module_value, module_label in module_tabs %}
+                <li class="nav-item">
+                    <a class="nav-link {% if active_module_group == module_value %}active{% endif %}" href="{% url 'files' %}?section={{ active_section }}&module_group={{ module_value }}">{{ module_label }}</a>
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+    {% if uses_supplier_tabs %}
+        <ul class="nav nav-pills mb-3">
+            {% for category_value, category_label in supplier_tabs %}
+                <li class="nav-item">
+                    <a class="nav-link {% if active_supplier_category == category_value %}active{% endif %}" href="{% url 'files' %}?section={{ active_section }}&supplier_category={{ category_value }}">{{ category_label }}</a>
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h5 class="mb-0">{{ active_section_label }}</h5>
+                    {% if uses_module_groups %}
+                        <small class="text-muted">Загрузка и просмотр файлов для категории {{ active_module_group }}.</small>
+                    {% elif uses_supplier_tabs %}
+                        <small class="text-muted">Загрузка и просмотр файлов поставщиков по выбранной категории.</small>
+                    {% else %}
+                        <small class="text-muted">Загрузка и просмотр шаблонов договоров (PDF и офисные форматы).</small>
+                    {% endif %}
+                </div>
+            </div>
+            {% if upload_error %}
+                <div class="alert alert-danger py-2">{{ upload_error }}</div>
+            {% endif %}
+            <form method="post" action="{% url 'library_asset_upload' %}" enctype="multipart/form-data" class="row g-2 align-items-end">
+                {% csrf_token %}
+                <input type="hidden" name="section" value="{{ active_section }}">
+                <input type="hidden" name="module_group" value="{{ active_module_group }}">
+                <input type="hidden" name="supplier_category" value="{{ active_supplier_category }}">
+                <div class="col-md-9">
+                    <label class="form-label">Выберите файл</label>
+                    <input type="file" name="upload" class="form-control" required>
+                </div>
+                <div class="col-md-3 d-grid">
+                    <button type="submit" class="btn btn-primary">Загрузить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        {% for asset in assets %}
+            <div class="col-lg-4 col-md-6">
+                <div class="card h-100">
+                    <div class="card-body">
+                        {% if active_section == 'video' %}
+                            <video controls class="w-100 rounded mb-2" preload="metadata">
+                                <source src="{% url 'library_asset_download' asset.id %}" type="{{ asset.mime_type|default:'video/mp4' }}">
+                            </video>
+                        {% elif asset.ext|lower in image_exts %}
+                            <img src="{% url 'library_asset_download' asset.id %}" alt="{{ asset.original_name }}" class="img-fluid rounded mb-2">
+                        {% elif asset.ext|lower == 'pdf' %}
+                            <div class="border rounded p-4 text-center text-muted mb-2">PDF</div>
+                        {% else %}
+                            <div class="border rounded p-4 text-center text-muted mb-2">{{ asset.ext|upper|default:"FILE" }}</div>
+                        {% endif %}
+                        <div class="fw-semibold text-truncate" title="{{ asset.original_name }}">{{ asset.original_name }}</div>
+                        <small class="text-muted">{{ asset.created_at|date:"d.m.Y H:i" }}</small>
+                    </div>
+                    <div class="card-footer bg-white border-0 pt-0">
+                        <a class="btn btn-outline-primary btn-sm w-100" href="{% url 'library_asset_download' asset.id %}">Скачать</a>
+                    </div>
+                </div>
+            </div>
+        {% empty %}
+            <div class="col-12">
+                <div class="alert alert-light border text-muted mb-0">Файлы пока не загружены.</div>
+            </div>
+        {% endfor %}
+    </div>
+{% endblock %}

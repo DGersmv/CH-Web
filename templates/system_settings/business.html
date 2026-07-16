@@ -1,0 +1,61 @@
+{% extends "system_settings/base.html" %}
+{% load system_settings_extras %}
+
+{% block settings_content %}
+    <div class="card mb-4">
+        <div class="card-header">Базовые параметры CRM</div>
+        <div class="card-body">
+            <form method="post" class="row g-3">
+                {% csrf_token %}
+                <div class="col-md-4">
+                    <label class="form-label">Маржа по умолчанию</label>
+                    {{ form.default_margin_percent }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Порог неактивной сделки</label>
+                    {{ form.stale_deal_days }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Горизонт напоминания по задачам</label>
+                    {{ form.task_reminder_hours }}
+                </div>
+                {% if form.errors %}
+                    <div class="col-12 text-danger small">{{ form.errors }}</div>
+                {% endif %}
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">Сохранить параметры</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">Текущие системные значения</div>
+        <div class="table-responsive">
+            <table class="table mb-0">
+                <thead>
+                    <tr>
+                        <th>Параметр</th>
+                        <th>Значение</th>
+                        <th>Кто обновил</th>
+                        <th>Когда</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for config in configs %}
+                        <tr>
+                            <td>{{ config_labels|get_item:config.key|default:config.key }}</td>
+                            <td><code>{{ config.value }}</code></td>
+                            <td>{{ config.updated_by.username|default:"—" }}</td>
+                            <td>{{ config.updated_at|date:"d.m.Y H:i" }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="4" class="text-center text-muted py-4">Параметры ещё не сохранялись.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock %}

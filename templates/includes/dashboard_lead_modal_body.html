@@ -43,6 +43,13 @@
         {% endif %}
     </div>
     <div class="col-md-6">
+        <label class="form-label" for="{{ lead_form.portal_password.id_for_label }}">{{ lead_form.portal_password.label }}</label>
+        {{ lead_form.portal_password }}
+        {% if lead_form.portal_password.errors %}
+            <div class="text-danger small">{{ lead_form.portal_password.errors|join:", " }}</div>
+        {% endif %}
+    </div>
+    <div class="col-md-6">
         <label class="form-label" for="{{ lead_form.location.id_for_label }}">{{ lead_form.location.label }}</label>
         {{ lead_form.location }}
         {% if lead_form.location.errors %}

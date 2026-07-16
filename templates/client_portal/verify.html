@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="row justify-content-center">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">Подтверждение входа</div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="fw-semibold">{{ deal.project_code }}</div>
+                        <div class="text-muted small">Введите код, отправленный на email.</div>
+                    </div>
+
+                    {% if error %}
+                        <div class="alert alert-danger py-2">{{ error }}</div>
+                    {% endif %}
+                    {% if notice %}
+                        <div class="alert alert-success py-2">{{ notice }}</div>
+                    {% endif %}
+
+                    <form method="post" action="{% url 'client_portal_verify' deal.id %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="email" value="{{ email|default:'' }}">
+                        <div class="mb-2">
+                            <label class="form-label">Код</label>
+                            <input name="code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" class="form-control" required autofocus>
+                        </div>
+                        <button class="btn btn-primary" type="submit">Войти</button>
+                        <a class="btn btn-outline-secondary" href="{% url 'client_portal_entry' deal.id %}">Назад</a>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+

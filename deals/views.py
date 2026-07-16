@@ -26,7 +26,17 @@ from .forms import (
     DealCreateForm,
     DealFileUploadForm,
 )
-from .models import ChangeLog, Deal, DealBathroom, ProjectFile, build_project_code_from_parts, normalize_project_code
+from .client_portal import create_portal_session, get_portal_session, touch_session
+from .models import (
+    ChangeLog,
+    Deal,
+    DealBathroom,
+    DealClientMessage,
+    DealClientMessageAttachment,
+    ProjectFile,
+    build_project_code_from_parts,
+    normalize_project_code,
+)
 from .services.bathrooms import (
     bathroom_totals,
     bathrooms_button_enabled,
@@ -40,6 +50,8 @@ from .services.storage_paths import ensure_deal_dirs, get_deal_root, get_files_r
 from .services.calculation_engine import CALC_SCHEMA_VERSION, calculate_config
 
 from catalog.forms import COST_ITEM_UNIT_CHOICES_RU
+from system_settings.events import record_domain_event
+from system_settings.services import get_default_margin_percent
 
 
 @login_required
@@ -68,6 +80,17 @@ def update_deal_status(request, deal_id):
             field_path='status',
             old_value={'value': old_status},
             new_value={'value': new_status},
+        )
+        record_domain_event(
+            actor=request.user,
+            event_type='deal.status_changed',
+            entity_model='Deal',
+            entity_id=deal.id,
+            payload={
+                'old_status': old_status,
+                'new_status': new_status,
+            },
+            request=request,
         )
 
     return render(
@@ -153,6 +176,7 @@ class DealCreateView(LoginRequiredMixin, FormView):
 
     def form_valid(self, form):
         deal = form.save(commit=False)
+        deal.margin_percent = get_default_margin_percent()
         new_client_name = form.cleaned_data.get('new_client_name', '').strip()
         if new_client_name and not deal.client:
             parsed = parse_quick_client_name(new_client_name)
@@ -209,6 +233,8 @@ def create_dashboard_lead(request):
         notes=notes,
         created_by=request.user,
     )
+    client.set_portal_password(form.cleaned_data.get('portal_password', ''))
+    client.save(update_fields=['portal_password_hash'])
     deal = Deal.objects.create(
         project_code=lead_project_code,
         code_client_name=code_person_name,
@@ -216,10 +242,23 @@ def create_dashboard_lead(request):
         module_count=module_count,
         client=client,
         status=Deal.Status.NEW,
+        margin_percent=get_default_margin_percent(),
         mortgage_required=form.cleaned_data['mortgage_required'],
         target_deal_date=form.cleaned_data['target_deal_date'],
     )
     ensure_deal_dirs(deal)
+    record_domain_event(
+        actor=request.user,
+        event_type='deal.created',
+        entity_model='Deal',
+        entity_id=deal.id,
+        payload={
+            'project_code': deal.project_code,
+            'module_count': deal.module_count,
+            'client_id': client.id,
+        },
+        request=request,
+    )
     response = HttpResponse('')
     response['HX-Redirect'] = redirect('deal_detail', pk=deal.pk).url
     return response
@@ -1074,3 +1113,295 @@ def claim_lead(request, deal_id):
         .order_by('-created_at')
     )
     return render(request, 'includes/dashboard_leads_block.html', {'new_leads': new_leads})
+
+
+CLIENT_PORTAL_COOKIE = 'client_portal_token'
+
+
+def _client_portal_context(deal, *, notice=None, error=None, email=None):
+    return {
+        'deal': deal,
+        'notice': notice,
+        'error': error,
+        'email': email or '',
+    }
+
+
+def _require_client_portal_session(request, deal):
+    token = request.COOKIES.get(CLIENT_PORTAL_COOKIE, '')
+    session = get_portal_session(deal=deal, token=token)
+    if session is None:
+        return None, redirect(reverse('client_portal_entry', kwargs={'deal_id': deal.id}))
+    touch_session(session)
+    return session, None
+
+
+def client_portal_entry(request, deal_id):
+    deal = get_object_or_404(Deal.objects.select_related('client'), pk=deal_id)
+    return render(request, 'client_portal/entry.html', _client_portal_context(deal))
+
+
+@require_POST
+def client_portal_send_otp(request, deal_id):
+    deal = get_object_or_404(Deal.objects.select_related('client'), pk=deal_id)
+    email = (request.POST.get('email') or '').strip()
+    password = (request.POST.get('password') or '').strip()
+    client = deal.client
+    if client is None:
+        return render(
+            request,
+            'client_portal/entry.html',
+            _client_portal_context(deal, error='Клиент не привязан к сделке.', email=email),
+            status=400,
+        )
+    if email.lower() != (client.email or '').strip().lower():
+        return render(
+            request,
+            'client_portal/entry.html',
+            _client_portal_context(deal, error='Неверный email или пароль.', email=email),
+            status=400,
+        )
+    if not client.check_portal_password(password):
+        return render(
+            request,
+            'client_portal/entry.html',
+            _client_portal_context(deal, error='Неверный email или пароль.', email=email),
+            status=400,
+        )
+    token = create_portal_session(deal=deal, email=email)
+    response = redirect(reverse('client_portal_chat', kwargs={'deal_id': deal.id}))
+    response.set_cookie(
+        CLIENT_PORTAL_COOKIE,
+        token,
+        max_age=7 * 24 * 60 * 60,
+        httponly=True,
+        secure=getattr(request, 'is_secure', lambda: False)(),
+        samesite='Lax',
+    )
+    return response
+
+
+def client_portal_chat(request, deal_id):
+    deal = get_object_or_404(Deal.objects.select_related('client'), pk=deal_id)
+    session, redirect_response = _require_client_portal_session(request, deal)
+    if redirect_response:
+        return redirect_response
+    messages = (
+        DealClientMessage.objects.filter(deal=deal)
+        .select_related('author_user')
+        .prefetch_related('attachments', 'attachments__project_file')
+        .order_by('created_at')[:200]
+    )
+    return render(
+        request,
+        'client_portal/chat.html',
+        {
+            'deal': deal,
+            'session_email': session.email,
+            'messages': messages,
+        },
+    )
+
+
+@require_POST
+def client_portal_message_send(request, deal_id):
+    deal = get_object_or_404(Deal, pk=deal_id)
+    session, redirect_response = _require_client_portal_session(request, deal)
+    if redirect_response:
+        return redirect_response
+    body = (request.POST.get('body') or '').strip()
+    if not body:
+        return redirect(reverse('client_portal_chat', kwargs={'deal_id': deal.id}))
+    DealClientMessage.objects.create(
+        deal=deal,
+        author_type=DealClientMessage.AuthorType.CLIENT,
+        author_user=None,
+        author_email=session.email,
+        body=body,
+    )
+    return redirect(reverse('client_portal_chat', kwargs={'deal_id': deal.id}))
+
+
+def _save_portal_upload_as_project_file(*, deal, uploaded, relative_dir: Path, source: str):
+    ensure_deal_dirs(deal)
+    stamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    original_name = _normalize_upload_name(uploaded.name)
+    ext = Path(original_name).suffix.lower().lstrip('.')
+    filename = f'{stamp}_{source}_other_{original_name}'
+    relative_path = get_deal_root(deal).joinpath(relative_dir, filename).relative_to(get_files_root())
+    absolute_path = get_files_root() / relative_path
+    absolute_path.parent.mkdir(parents=True, exist_ok=True)
+    with absolute_path.open('wb+') as destination:
+        for chunk in uploaded.chunks():
+            destination.write(chunk)
+
+    return ProjectFile.objects.create(
+        deal=deal,
+        source=source,
+        category=ProjectFile.Category.OTHER,
+        relative_path=str(relative_path).replace('\\', '/'),
+        original_name=original_name,
+        size_bytes=uploaded.size,
+        mime_type=getattr(uploaded, 'content_type', '') or mimetypes.guess_type(original_name)[0] or '',
+        ext=ext,
+        uploaded_by=None,
+    )
+
+
+@require_POST
+def client_portal_upload(request, deal_id):
+    deal = get_object_or_404(Deal, pk=deal_id)
+    session, redirect_response = _require_client_portal_session(request, deal)
+    if redirect_response:
+        return redirect_response
+
+    uploaded = request.FILES.get('upload')
+    if not uploaded:
+        return redirect(reverse('client_portal_chat', kwargs={'deal_id': deal.id}))
+
+    content_type = (getattr(uploaded, 'content_type', '') or '').lower()
+    is_voice = content_type.startswith('audio/')
+    relative_dir = Path('incoming/client/voice' if is_voice else 'incoming/client/docs')
+    pf = _save_portal_upload_as_project_file(deal=deal, uploaded=uploaded, relative_dir=relative_dir, source=ProjectFile.Source.CLIENT)
+
+    msg = DealClientMessage.objects.create(
+        deal=deal,
+        author_type=DealClientMessage.AuthorType.CLIENT,
+        author_user=None,
+        author_email=session.email,
+        body='' if is_voice else f'Файл: {pf.original_name}',
+    )
+    DealClientMessageAttachment.objects.create(
+        message=msg,
+        kind=DealClientMessageAttachment.Kind.VOICE if is_voice else DealClientMessageAttachment.Kind.PROJECT_FILE,
+        project_file=pf,
+        mime_type=pf.mime_type,
+        duration_ms=None,
+    )
+    return redirect(reverse('client_portal_chat', kwargs={'deal_id': deal.id}))
+
+
+def client_portal_open_project_file(request, deal_id, file_id):
+    deal = get_object_or_404(Deal, pk=deal_id)
+    session, redirect_response = _require_client_portal_session(request, deal)
+    if redirect_response:
+        return redirect_response
+    file_obj = get_object_or_404(ProjectFile, pk=file_id, deal=deal, is_archived=False)
+    absolute_path = file_obj.absolute_path
+    if not absolute_path.exists() or not absolute_path.is_file():
+        raise Http404('File not found')
+    # Do not log client downloads into staff change log for now.
+    return FileResponse(absolute_path.open('rb'), as_attachment=False, filename=file_obj.original_name)
+
+
+@login_required
+@require_POST
+def deal_client_message_send(request, deal_id):
+    deal = get_object_or_404(Deal, pk=deal_id)
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    body = (request.POST.get('body') or '').strip()
+    if not body:
+        return redirect('deal_detail', pk=deal.id)
+    message = DealClientMessage.objects.create(
+        deal=deal,
+        author_type=DealClientMessage.AuthorType.STAFF,
+        author_user=request.user,
+        author_email='',
+        body=body,
+    )
+    record_domain_event(
+        actor=request.user,
+        event_type='client_message.sent',
+        entity_model='DealClientMessage',
+        entity_id=message.id,
+        payload={'deal_id': deal.id, 'kind': 'text'},
+        request=request,
+    )
+    return redirect('deal_detail', pk=deal.id)
+
+
+@login_required
+@require_POST
+def deal_client_message_attach_existing(request, deal_id):
+    deal = get_object_or_404(Deal, pk=deal_id)
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    raw_id = (request.POST.get('project_file_id') or '').strip()
+    if not raw_id.isdigit():
+        return redirect('deal_detail', pk=deal.id)
+    pf = get_object_or_404(ProjectFile, pk=int(raw_id), deal=deal, is_archived=False)
+    msg = DealClientMessage.objects.create(
+        deal=deal,
+        author_type=DealClientMessage.AuthorType.STAFF,
+        author_user=request.user,
+        author_email='',
+        body=f'Файл: {pf.original_name}',
+    )
+    DealClientMessageAttachment.objects.create(
+        message=msg,
+        kind=DealClientMessageAttachment.Kind.PROJECT_FILE,
+        project_file=pf,
+        mime_type=pf.mime_type,
+        duration_ms=None,
+    )
+    record_domain_event(
+        actor=request.user,
+        event_type='client_message.sent',
+        entity_model='DealClientMessage',
+        entity_id=msg.id,
+        payload={'deal_id': deal.id, 'kind': 'project_file', 'project_file_id': pf.id},
+        request=request,
+    )
+    return redirect('deal_detail', pk=deal.id)
+
+
+@login_required
+@require_POST
+def deal_client_message_upload(request, deal_id):
+    deal = get_object_or_404(Deal, pk=deal_id)
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    uploaded = request.FILES.get('upload')
+    if not uploaded:
+        return redirect('deal_detail', pk=deal.id)
+
+    content_type = (getattr(uploaded, 'content_type', '') or '').lower()
+    is_voice = content_type.startswith('audio/')
+    relative_dir = Path('outgoing/client')
+    pf = _save_portal_upload_as_project_file(
+        deal=deal,
+        uploaded=uploaded,
+        relative_dir=relative_dir,
+        source=ProjectFile.Source.SYSTEM,
+    )
+    pf.uploaded_by = request.user
+    pf.save(update_fields=['uploaded_by'])
+
+    msg = DealClientMessage.objects.create(
+        deal=deal,
+        author_type=DealClientMessage.AuthorType.STAFF,
+        author_user=request.user,
+        author_email='',
+        body='' if is_voice else f'Файл: {pf.original_name}',
+    )
+    DealClientMessageAttachment.objects.create(
+        message=msg,
+        kind=DealClientMessageAttachment.Kind.VOICE if is_voice else DealClientMessageAttachment.Kind.PROJECT_FILE,
+        project_file=pf,
+        mime_type=pf.mime_type,
+        duration_ms=None,
+    )
+    record_domain_event(
+        actor=request.user,
+        event_type='client_message.sent',
+        entity_model='DealClientMessage',
+        entity_id=msg.id,
+        payload={
+            'deal_id': deal.id,
+            'kind': 'voice' if is_voice else 'uploaded_file',
+            'project_file_id': pf.id,
+        },
+        request=request,
+    )
+    return redirect('deal_detail', pk=deal.id)

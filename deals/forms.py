@@ -261,6 +261,12 @@ class DashboardLeadForm(forms.Form):
         required=False,
         widget=forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'client@example.com'}),
     )
+    portal_password = forms.CharField(
+        label='Пароль для входа клиента',
+        required=True,
+        min_length=6,
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Минимум 6 символов'}),
+    )
     location = forms.CharField(
         label='Участок (где планируется строительство)',
         max_length=255,
@@ -314,6 +320,13 @@ class DashboardLeadForm(forms.Form):
         if not value.startswith('+7'):
             raise forms.ValidationError('Номер должен начинаться с +7.')
         return value
+
+    def clean(self):
+        cleaned = super().clean()
+        email = (cleaned.get('email') or '').strip().lower()
+        if not email:
+            self.add_error('email', 'Для входа клиента укажите email.')
+        return cleaned
 
 
 class DealBathroomLineForm(forms.ModelForm):

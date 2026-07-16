@@ -1,0 +1,231 @@
+{% extends "system_settings/base.html" %}
+{% load system_settings_extras %}
+
+{% block settings_content %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="h4 mb-1">{{ page_title }}</h2>
+            {% if item %}
+                <div class="text-muted">Редактирование позиции и связанных опций каталога.</div>
+            {% else %}
+                <div class="text-muted">Создание новой позиции каталога.</div>
+            {% endif %}
+        </div>
+        <a class="btn btn-outline-secondary" href="{% url 'settings_catalog' %}">Назад к списку</a>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">Карточка позиции</div>
+        <div class="card-body">
+            <form method="post" class="row g-3">
+                {% csrf_token %}
+                {% if item %}
+                    <input type="hidden" name="action" value="save_item">
+                {% endif %}
+                <div class="col-md-4">
+                    <label class="form-label">Код</label>
+                    {{ item_form.code }}
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label">Наименование</label>
+                    {{ item_form.name_ru }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Секция</label>
+                    {{ item_form.section }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Категория</label>
+                    {{ item_form.category }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Тип позиции</label>
+                    {{ item_form.kind }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Ед. расчёта</label>
+                    {{ item_form.unit }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Цена материала</label>
+                    {{ item_form.price_material }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Цена работы</label>
+                    {{ item_form.price_work }}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Формула-множитель</label>
+                    {{ item_form.formula_multiplier }}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Порядок</label>
+                    {{ item_form.sort_order }}
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <div class="form-check">
+                        {{ item_form.default_included }}
+                        <label class="form-check-label">Включено по умолчанию</label>
+                    </div>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <div class="form-check">
+                        {{ item_form.is_active }}
+                        <label class="form-check-label">Активна</label>
+                    </div>
+                </div>
+                {% if item_form.errors %}
+                    <div class="col-12 text-danger small">{{ item_form.errors }}</div>
+                {% endif %}
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">{% if item %}Сохранить позицию{% else %}Создать позицию{% endif %}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if item %}
+        <div class="card mb-4">
+            <div class="card-header">Новая опция</div>
+            <div class="card-body">
+                <form method="post" class="row g-3">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="create_option">
+                    <div class="col-md-4">
+                        <label class="form-label">Код</label>
+                        {{ option_form.code }}
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label">Наименование</label>
+                        {{ option_form.name_ru }}
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Производитель</label>
+                        {{ option_form.manufacturer }}
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Артикул</label>
+                        {{ option_form.article }}
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Страна</label>
+                        {{ option_form.country }}
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Ед. расчёта</label>
+                        {{ option_form.unit }}
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Цена</label>
+                        {{ option_form.price }}
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Порядок</label>
+                        {{ option_form.sort_order }}
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <div class="form-check">
+                            {{ option_form.is_active }}
+                            <label class="form-check-label">Активна</label>
+                        </div>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <div class="form-check">
+                            {{ option_form.is_default }}
+                            <label class="form-check-label">По умолчанию</label>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Примечания</label>
+                        {{ option_form.description }}
+                    </div>
+                    {% if option_form.errors %}
+                        <div class="col-12 text-danger small">{{ option_form.errors }}</div>
+                    {% endif %}
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-outline-primary">Добавить опцию</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Опции позиции</div>
+            <div class="card-body">
+                <div class="accordion" id="catalogOptionsAccordion">
+                    {% for option in options %}
+                        {% with option_update_form=option_update_forms|get_item:option.id %}
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#catalog-option-{{ option.id }}">
+                                    {{ option.name_ru }} — {{ option.price }} ₽
+                                </button>
+                            </h2>
+                            <div id="catalog-option-{{ option.id }}" class="accordion-collapse collapse" data-bs-parent="#catalogOptionsAccordion">
+                                <div class="accordion-body">
+                                    <form method="post" action="{% url 'settings_catalog_option_update' option.id %}" class="row g-3">
+                                        {% csrf_token %}
+                                        <div class="col-md-4">
+                                            <label class="form-label">Код</label>
+                                            {{ option_update_form.code }}
+                                        </div>
+                                        <div class="col-md-8">
+                                            <label class="form-label">Наименование</label>
+                                            {{ option_update_form.name_ru }}
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Производитель</label>
+                                            {{ option_update_form.manufacturer }}
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Артикул</label>
+                                            {{ option_update_form.article }}
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Страна</label>
+                                            {{ option_update_form.country }}
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Ед. расчёта</label>
+                                            {{ option_update_form.unit }}
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Цена</label>
+                                            {{ option_update_form.price }}
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label">Порядок</label>
+                                            {{ option_update_form.sort_order }}
+                                        </div>
+                                        <div class="col-md-2 d-flex align-items-end">
+                                            <div class="form-check">
+                                                {{ option_update_form.is_active }}
+                                                <label class="form-check-label">Активна</label>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-2 d-flex align-items-end">
+                                            <div class="form-check">
+                                                {{ option_update_form.is_default }}
+                                                <label class="form-check-label">По умолчанию</label>
+                                            </div>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label">Примечания</label>
+                                            {{ option_update_form.description }}
+                                        </div>
+                                        <div class="col-12">
+                                            <button type="submit" class="btn btn-sm btn-outline-primary">Сохранить опцию</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        {% endwith %}
+                    {% empty %}
+                        <div class="text-muted">У позиции пока нет опций.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}

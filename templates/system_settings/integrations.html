@@ -1,0 +1,113 @@
+{% extends "system_settings/base.html" %}
+
+{% block settings_content %}
+    <div class="card mb-4">
+        <div class="card-header">Plugin API</div>
+        <div class="card-body">
+            <p class="mb-2">Текущий endpoint для импорта версий проекта:</p>
+            <div class="input-group">
+                <input type="text" class="form-control" readonly value="{{ plugin_endpoint }}">
+            </div>
+            <div class="small text-muted mt-2">
+                Поддерживаются события: {% for event_name in domain_events %}<code>{{ event_name }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}.
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">Новый integration token</div>
+        <div class="card-body">
+            {% if created_token %}
+                <div class="alert alert-success">
+                    <div class="fw-semibold">Сохраните токен сейчас.</div>
+                    <code>{{ created_token }}</code>
+                </div>
+            {% endif %}
+            <form method="post" class="row g-3">
+                {% csrf_token %}
+                <div class="col-md-6">
+                    <label class="form-label">Название</label>
+                    {{ form.name }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Владелец</label>
+                    {{ form.owner }}
+                </div>
+                <div class="col-md-2 d-grid">
+                    <label class="form-label">&nbsp;</label>
+                    <button type="submit" class="btn btn-primary">Создать</button>
+                </div>
+                {% if form.errors %}
+                    <div class="col-12 text-danger small">{{ form.errors }}</div>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">Активные токены</div>
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Название</th>
+                        <th>Владелец</th>
+                        <th>Ключ</th>
+                        <th>Последнее использование</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for token in integration_tokens %}
+                        <tr>
+                            <td>{{ token.name }}</td>
+                            <td>{{ token.owner.username }}</td>
+                            <td><code>{{ token.masked_key }}</code></td>
+                            <td>{{ token.last_used_at|date:"d.m.Y H:i"|default:"—" }}</td>
+                            <td class="text-end">
+                                <form method="post" action="{% url 'settings_integration_token_delete' token.id %}">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Удалить</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-4">Токены ещё не созданы.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">Последние platform jobs</div>
+        <div class="table-responsive">
+            <table class="table mb-0">
+                <thead>
+                    <tr>
+                        <th>Тип</th>
+                        <th>Статус</th>
+                        <th>Запуск после</th>
+                        <th>Попытки</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job in platform_jobs %}
+                        <tr>
+                            <td><code>{{ job.job_type }}</code></td>
+                            <td>{{ job.get_status_display }}</td>
+                            <td>{{ job.run_after|date:"d.m.Y H:i" }}</td>
+                            <td>{{ job.attempts }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="4" class="text-center text-muted py-4">Фоновые задачи пока не ставились в очередь.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock %}

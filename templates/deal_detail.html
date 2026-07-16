@@ -33,17 +33,20 @@
 
     <div class="row g-3">
         <div class="col-lg-6">
-            <div class="card">
-                <div class="card-header py-2">Клиент</div>
-                <div class="card-body py-2">
-                    {% if deal.client %}
-                        <p class="mb-1"><strong>{{ deal.client.full_name }}</strong></p>
-                        <p class="mb-1">Телефон: {{ deal.client.phone|default:"—" }}</p>
-                        <p class="mb-0">Email: {{ deal.client.email|default:"—" }}</p>
-                    {% else %}
-                        <p class="text-muted mb-0">Клиент не привязан.</p>
-                    {% endif %}
+            <div class="d-flex flex-column gap-3">
+                <div class="card">
+                    <div class="card-header py-2">Клиент</div>
+                    <div class="card-body py-2">
+                        {% if deal.client %}
+                            <p class="mb-1"><strong>{{ deal.client.full_name }}</strong></p>
+                            <p class="mb-1">Телефон: {{ deal.client.phone|default:"—" }}</p>
+                            <p class="mb-0">Email: {{ deal.client.email|default:"—" }}</p>
+                        {% else %}
+                            <p class="text-muted mb-0">Клиент не привязан.</p>
+                        {% endif %}
+                    </div>
                 </div>
+                {% include "includes/deal_client_messages_block.html" %}
             </div>
         </div>
         {% if not is_file_only_role %}

@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.contrib.auth.hashers import check_password, make_password
 from django.db import models
 
 
@@ -45,6 +46,7 @@ class Client(models.Model):
     middle_name = models.CharField('Отчество', max_length=100, blank=True)
     phone = models.CharField(max_length=50, blank=True)
     email = models.EmailField(blank=True)
+    portal_password_hash = models.CharField(max_length=128, blank=True, default='')
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(
@@ -72,3 +74,12 @@ class Client(models.Model):
     def __str__(self):
         label = self.full_name
         return label if label else f'Клиент #{self.pk}'
+
+    def set_portal_password(self, raw_password: str) -> None:
+        raw = (raw_password or '').strip()
+        self.portal_password_hash = make_password(raw) if raw else ''
+
+    def check_portal_password(self, raw_password: str) -> bool:
+        if not self.portal_password_hash:
+            return False
+        return check_password(raw_password or '', self.portal_password_hash)

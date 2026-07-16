@@ -1,0 +1,143 @@
+<div class="card" id="deal-client-messages-block">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <span>Сообщения от заказчика</span>
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-secondary" type="button" data-copy-portal-url="{{ client_portal_url }}">Скопировать ссылку</button>
+            <a class="btn btn-sm btn-primary" href="{{ client_portal_url }}" target="_blank">Открыть портал</a>
+        </div>
+    </div>
+    <div class="card-body py-2">
+        {% if client_messages_latest %}
+            <div class="small text-muted mb-2">
+                Последнее: {{ client_messages_latest.created_at|date:"d.m.Y H:i" }}
+                {% if client_messages_latest.author_type == 'client' %}
+                    (клиент)
+                {% else %}
+                    (сотрудник)
+                {% endif %}
+            </div>
+        {% else %}
+            <div class="text-muted small mb-2">Сообщений пока нет.</div>
+        {% endif %}
+
+        <div class="border rounded p-2 mb-2" style="max-height: 280px; overflow: auto;">
+            {% if client_messages_recent %}
+                <div class="d-flex flex-column gap-2">
+                    {% for msg in client_messages_recent %}
+                        <div class="border rounded p-2 {% if msg.author_type == 'client' %}bg-light-subtle{% endif %}">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <div class="small">
+                                    {% if msg.author_type == 'client' %}
+                                        <strong>Клиент</strong> <span class="text-muted">({{ msg.author_email }})</span>
+                                    {% else %}
+                                        <strong>{{ msg.author_user.username|default:"Сотрудник" }}</strong>
+                                    {% endif %}
+                                </div>
+                                <div class="text-muted small">{{ msg.created_at|date:"d.m.Y H:i" }}</div>
+                            </div>
+                            {% if msg.body %}
+                                <div class="small" style="white-space: pre-wrap;">{{ msg.body }}</div>
+                            {% endif %}
+                            {% if msg.attachments.all %}
+                                <div class="mt-2 d-flex flex-column gap-1">
+                                    {% for att in msg.attachments.all %}
+                                        {% if att.project_file %}
+                                            {% if att.kind == 'voice' %}
+                                                <audio controls src="{% url 'deal_file_open' att.project_file.id %}?log=0" style="width: 100%;"></audio>
+                                            {% else %}
+                                                <a class="small" href="{% url 'deal_file_open' att.project_file.id %}" target="_blank">{{ att.project_file.original_name }}</a>
+                                            {% endif %}
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-muted small">Пока пусто.</div>
+            {% endif %}
+        </div>
+
+        <form method="post" action="{% url 'deal_client_message_send' deal.id %}" class="mb-2">
+            {% csrf_token %}
+            <div class="mb-2">
+                <textarea name="body" class="form-control form-control-sm" rows="2" placeholder="Написать клиенту..."></textarea>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-sm btn-primary" type="submit">Отправить</button>
+                <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#deal-client-attach-existing">Прикрепить из файлов сделки</button>
+                <button class="btn btn-sm btn-outline-secondary" type="button" data-upload-trigger="client-msg-upload">Загрузить с компьютера</button>
+            </div>
+        </form>
+
+        <div class="collapse mt-2" id="deal-client-attach-existing">
+            <form method="post" action="{% url 'deal_client_message_attach_existing' deal.id %}">
+                {% csrf_token %}
+                <div class="d-flex gap-2 align-items-end flex-wrap">
+                    <div style="min-width: 320px; flex: 1;">
+                        <label class="form-label small mb-1">Файл по сделке</label>
+                        <select name="project_file_id" class="form-select form-select-sm" required>
+                            <option value="" selected disabled>Выберите файл…</option>
+                            {% for pf in deal_project_files_for_attach %}
+                                <option value="{{ pf.id }}">{{ pf.original_name }} ({{ pf.source }}, {{ pf.updated_at|date:"d.m.Y H:i" }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <button class="btn btn-sm btn-outline-primary" type="submit">Прикрепить</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <form
+            id="upload-form-client-msg-upload"
+            method="post"
+            enctype="multipart/form-data"
+            action="{% url 'deal_client_message_upload' deal.id %}"
+            class="d-none"
+        >
+            {% csrf_token %}
+            <input type="file" name="upload">
+        </form>
+    </div>
+</div>
+
+<script>
+    (function () {
+        function copyText(text) {
+            if (!text) return;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).catch(function () {});
+                return;
+            }
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); } catch (e) {}
+            document.body.removeChild(ta);
+        }
+
+        var copyBtn = document.querySelector('[data-copy-portal-url]');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', function () {
+                copyText(copyBtn.getAttribute('data-copy-portal-url'));
+            });
+        }
+
+        var form = document.getElementById('upload-form-client-msg-upload');
+        if (form) {
+            var fileInput = form.querySelector('input[type="file"]');
+            var trigger = document.querySelector('[data-upload-trigger="client-msg-upload"]');
+            if (fileInput && trigger) {
+                trigger.addEventListener('click', function () { fileInput.click(); });
+                fileInput.addEventListener('change', function () {
+                    if (fileInput.files && fileInput.files.length > 0) form.submit();
+                });
+            }
+        }
+    })();
+</script>
+
