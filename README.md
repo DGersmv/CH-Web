@@ -2,6 +2,13 @@
 
 Внутренняя CRM для компании модульных домов (Django + Postgres + Docker).
 
+## Техническая документация
+
+- [Клиентский портал](docs/client-portal-workflow.md) — вход, сессии, сообщения, файлы и эксплуатационные ограничения.
+- [Контракт API плагина](docs/plugin-api-contract.md) — импорт версий проекта из ArchiCAD.
+- [Спецификация расчёта](docs/excel-formula-spec.md) — соответствие полей Excel и расчётного движка.
+- [Platform Blueprint](docs/ch-crm-platform-blueprint.md) — границы domain/platform, настройки, события и jobs.
+
 ## Запуск проекта
 
 1. Убедись, что Docker Desktop запущен (Engine running).
