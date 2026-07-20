@@ -3,7 +3,7 @@
 ## Domain vs Platform
 
 ### Domain modules
-- `deals`: сделки, версии проекта, клиентский портал, файлы проекта, сметы, конфигуратор.
+- `deals`: сделки, версии проекта, [клиентский портал](client-portal-workflow.md), файлы проекта, сметы, конфигуратор.
 - `clients`: карточки клиентов и клиентские данные.
 - `catalog`: справочник расчётных позиций и опций.
 - `tasks`: задачи по сделкам и внутренние вложения.
@@ -53,7 +53,7 @@
 ## Async Jobs Scope
 
 ### What belongs in jobs first
-- Очистка просроченных OTP и client portal sessions
+- Очистка просроченных client portal sessions и записей legacy OTP
 - Напоминания по просроченным задачам
 - Поиск “зависших” сделок
 - Генерация производных артефактов по файлам
@@ -63,6 +63,9 @@
 - Таблица очереди: `system_settings.PlatformJob`
 - Команда запуска: `python manage.py run_platform_jobs`
 - Первый реальный handler: `cleanup_expired_portal_access`
+- Текущий вход в портал использует email + пароль, а не OTP; подробности и
+  эксплуатационные ограничения описаны в
+  [`client-portal-workflow.md`](client-portal-workflow.md).
 
 Это intentionally small queue layer на базе БД. Следующий шаг, если нагрузка вырастет, — вынести worker в отдельный процесс/сервис.
 
