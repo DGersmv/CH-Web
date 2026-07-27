@@ -21,6 +21,8 @@
 
 ## System Settings IA
 
+Операционный runbook: [system-settings-and-library.md](system-settings-and-library.md).
+
 ### Current routes
 - `/settings/employees/`
 - `/settings/library/`
@@ -33,6 +35,7 @@
 ### Ownership
 - Доступ ко всему разделу получают только `head` и `admin`.
 - Основной guard: `system_settings.decorators.leadership_required`.
+- `GET /files/` редиректит на `/settings/library/`, поэтому пункт «Файлы» в навигации для не-leadership сейчас приводит к 403.
 
 ## First Automation Events
 
@@ -63,6 +66,8 @@
 - Таблица очереди: `system_settings.PlatformJob`
 - Команда запуска: `python manage.py run_platform_jobs`
 - Первый реальный handler: `cleanup_expired_portal_access`
+- `domain_event_follow_up` можно поставить через `enqueue_follow_up=True`, но handler не зарегистрирован; текущие вызовы `record_domain_event` follow-up не включают.
+- Cron/отдельный worker в `docker-compose.yml` не настроены.
 
 Это intentionally small queue layer на базе БД. Следующий шаг, если нагрузка вырастет, — вынести worker в отдельный процесс/сервис.
 
@@ -70,8 +75,8 @@
 
 ### Current state
 - Endpoint: `POST /api/plugin/project-versions/`
-- Поддерживается аутентификация через `IntegrationTokenAuthentication` и DRF tokens.
-- Управление токенами доступно в `/settings/integrations/`.
+- Поддерживается аутентификация через `IntegrationTokenAuthentication` (`Bearer`/`Token`) и DRF `TokenAuthentication`.
+- Управление токенами доступно в `/settings/integrations/`; полный ключ показывается один раз при создании.
 
 ### Near-term roadmap
 1. Добавить отдельные inbound endpoints по типам интеграций.
@@ -82,8 +87,15 @@
 ## Business Settings
 
 Сейчас в `system_settings.SystemConfig` поддерживаются:
-- `default_margin_percent`
-- `stale_deal_days`
-- `task_reminder_hours`
+- `default_margin_percent` — используется при создании сделки/лида через `get_default_margin_percent()`
+- `stale_deal_days` — сохраняется в UI, обработчиков пока нет
+- `task_reminder_hours` — сохраняется в UI, обработчиков пока нет
 
-Эти параметры должны применяться ко всем новым процессам, а не зашиваться в form/view constants.
+Цель: параметры должны применяться ко всем новым процессам, а не зашиваться в form/view constants. Пока это верно только для маржи по умолчанию.
+
+## File Library
+
+- Модель: `deals.models.LibraryAsset` (секции layout/photo/video/contract_template/supplier_file).
+- Хранение: `CRM_FILES_ROOT/library/...` через `ensure_library_dirs()`.
+- Upload/download: `POST /files/upload/`, `GET /files/assets/<id>/download/` (login required).
+- Browse UI: `/settings/library/` (leadership only).

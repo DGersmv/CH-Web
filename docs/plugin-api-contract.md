@@ -7,8 +7,12 @@
 
 - Method: `POST`
 - URL: `/api/plugin/project-versions/`
-- Auth: DRF token (заголовок `Authorization: Token <token>`)
+- Auth (любой из вариантов):
+  - Integration token из `/settings/integrations/`: `Authorization: Bearer <key>` или `Authorization: Token <key>`
+  - DRF auth token: `Authorization: Token <drf_token>`
 - Content-Type: `application/json`
+
+Токен интеграции привязан к `owner`; при успешной аутентификации обновляется `last_used_at`, а `created_by` плагин-запроса становится этим пользователем. Управление токенами и jobs: [system-settings-and-library.md](system-settings-and-library.md).
 
 ## Payload (v0 draft)
 
