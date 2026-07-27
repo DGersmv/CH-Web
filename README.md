@@ -2,6 +2,13 @@
 
 Внутренняя CRM для компании модульных домов (Django + Postgres + Docker).
 
+## Техническая документация
+
+- [Системные настройки и библиотека](docs/system-settings-and-library.md) — `/settings/`, `LibraryAsset`, integration tokens, domain events и platform jobs.
+- [Контракт API плагина](docs/plugin-api-contract.md) — импорт версий проекта из ArchiCAD.
+- [Спецификация расчёта](docs/excel-formula-spec.md) — соответствие полей Excel и расчётного движка.
+- [Platform Blueprint](docs/ch-crm-platform-blueprint.md) — границы domain/platform, настройки, события и jobs.
+
 ## Запуск проекта
 
 1. Убедись, что Docker Desktop запущен (Engine running).
@@ -88,7 +95,18 @@ docker compose exec app python manage.py createsuperuser
 
 - По умолчанию проект хранит файлы в `crm_files` внутри корня репозитория.
 - Переопределить корень можно через переменную окружения `CRM_FILES_ROOT`.
-- Файлы раскладываются по структуре клиент/проект/источник (заказчик или проектировщик), пути в БД сохраняются относительными.
+- Файлы сделок раскладываются по структуре клиент/проект/источник (заказчик или проектировщик), пути в БД сохраняются относительными.
+- Корпоративная библиотека (`LibraryAsset`) лежит отдельно в `CRM_FILES_ROOT/library/...`; UI — `/settings/library/` (только `head`/`admin`). Подробности: [system-settings-and-library.md](docs/system-settings-and-library.md).
+
+## Platform jobs
+
+Очередь на таблице `system_settings.PlatformJob`. Периодический worker в compose не запущен — job нужно ставить и выполнять явно:
+
+```bash
+docker compose exec app python manage.py shell -c \
+  "from system_settings.services import enqueue_platform_job; enqueue_platform_job(job_type='cleanup_expired_portal_access')"
+docker compose exec app python manage.py run_platform_jobs
+```
 
 ## Состояние проекта
 
