@@ -92,7 +92,11 @@ docker compose exec app python manage.py createsuperuser
 
 ## Состояние проекта
 
-Планируемая структура вкладок по этапам:
+На карточке сделки есть UI-вкладки по этапам (пока заглушки «в разработке»).
+Операционный статус сделки — это поле `Deal.status`, а не эти вкладки.
+Подробности: [docs/deal-lifecycle.md](docs/deal-lifecycle.md).
+
+Планируемая структура вкладок:
 
 1. `Переговоры и КП` — объединяет лид / квалификацию и переговоры с коммерческим предложением
 2. `Согласования`
@@ -101,3 +105,13 @@ docker compose exec app python manage.py createsuperuser
 5. `Производство`
 6. `Монтаж / Установка`
 7. `Сдача клиенту`
+
+## Документация
+
+| Документ | Содержание |
+|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Контекст системы для разработки |
+| [docs/ch-crm-platform-blueprint.md](docs/ch-crm-platform-blueprint.md) | Границы domain/platform |
+| [docs/deal-lifecycle.md](docs/deal-lifecycle.md) | Лиды, коды проекта, статусы, вкладки этапов |
+| [docs/plugin-api-contract.md](docs/plugin-api-contract.md) | Контракт ArchiCAD plugin API |
+| [docs/excel-formula-spec.md](docs/excel-formula-spec.md) | Спецификация расчёта excel-v1 |

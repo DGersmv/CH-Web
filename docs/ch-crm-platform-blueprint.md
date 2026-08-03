@@ -8,6 +8,10 @@
 - `catalog`: справочник расчётных позиций и опций.
 - `tasks`: задачи по сделкам и внутренние вложения.
 
+Операционный цикл сделки (лиды с дашборда, `project_code`, claim,
+`Deal.status`, вкладки этапов) описан в
+[deal-lifecycle.md](deal-lifecycle.md).
+
 ### Platform modules
 - `accounts`: пользователи, роли, личные сообщения, уведомления, аудит, WebSocket events.
 - `system_settings`: системные настройки, integration tokens, platform jobs, административные справочники.
