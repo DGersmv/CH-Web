@@ -3,10 +3,10 @@
 ## Domain vs Platform
 
 ### Domain modules
-- `deals`: сделки, версии проекта, клиентский портал, файлы проекта, сметы, конфигуратор.
+- `deals`: сделки, версии проекта, клиентский портал, файлы проекта, сметы, конфигуратор. Операционный гид сметы: [`configurator-draft-workflow.md`](configurator-draft-workflow.md).
 - `clients`: карточки клиентов и клиентские данные.
 - `catalog`: справочник расчётных позиций и опций.
-- `tasks`: задачи по сделкам и внутренние вложения.
+- `tasks`: задачи по сделкам и внутренние вложения. Операционный гид: [`tasks-workflow.md`](tasks-workflow.md). `task.created` уже в `TOP_DOMAIN_EVENTS`; `task.completed` пишется в аудит, но в этот список не входит. `task_reminder_hours` пока без job handler.
 
 ### Platform modules
 - `accounts`: пользователи, роли, личные сообщения, уведомления, аудит, WebSocket events.
