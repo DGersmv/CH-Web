@@ -1,0 +1,624 @@
+{% if show_umnik_chat %}
+<style>
+    #umnik-toggle {
+        position: fixed;
+        right: 20px;
+        bottom: 20px;
+        z-index: 1080;
+        border-radius: 999px;
+        padding: 10px 18px;
+        box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    }
+    #umnik-panel {
+        position: fixed;
+        right: 20px;
+        bottom: 76px;
+        width: min(860px, calc(100vw - 24px));
+        height: min(640px, calc(100vh - 110px));
+        z-index: 1080;
+        display: none;
+        background: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: 12px;
+        box-shadow: 0 16px 40px rgba(0,0,0,.2);
+        overflow: hidden;
+    }
+    #umnik-panel.open { display: flex; }
+    #umnik-sidebar {
+        width: 240px;
+        min-width: 240px;
+        border-right: 1px solid #dee2e6;
+        background: #f8f9fa;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    #umnik-main {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+    }
+    #umnik-sidebar-scroll {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 0 8px;
+    }
+    #umnik-log {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px;
+        background: #fff;
+        font-size: 14px;
+    }
+    .umnik-msg { margin-bottom: 10px; white-space: pre-wrap; }
+    .umnik-msg.user { color: #1b4d8c; }
+    .umnik-msg.assistant { color: #212529; }
+    .umnik-msg.err { color: #842029; }
+    .umnik-att { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 8px; white-space: normal; }
+    .umnik-att a {
+        display: inline-flex; align-items: center; gap: 6px;
+        max-width: 260px; padding: 4px 8px; border: 1px solid #dee2e6; border-radius: 8px;
+        background: #f8f9fa; font-size: 12px; color: #1b4d8c; text-decoration: none;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .umnik-att a:hover { background: #e9ecef; }
+    .umnik-att img {
+        max-height: 160px; max-width: 240px; border-radius: 8px; border: 1px solid #dee2e6; display: block;
+    }
+    .umnik-pending {
+        display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px;
+    }
+    .umnik-pending:empty { display: none; }
+    .umnik-chip {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 2px 6px 2px 8px; border: 1px solid #cfe0f5; border-radius: 999px;
+        background: #eef6ff; font-size: 12px; color: #1b4d8c; max-width: 220px;
+    }
+    .umnik-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .umnik-chip button {
+        border: 0; background: transparent; color: #6c757d; font-size: 14px; line-height: 1;
+        cursor: pointer; padding: 0 2px;
+    }
+    .umnik-sec {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        color: #6c757d;
+        padding: 10px 12px 4px;
+    }
+    .umnik-sec-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-right: 8px;
+    }
+    .umnik-sec-row .umnik-sec { flex: 1; }
+    .umnik-new-btn {
+        padding: 1px 8px;
+        font-size: 11px;
+        line-height: 1.4;
+        white-space: nowrap;
+    }
+    .umnik-item {
+        display: block;
+        width: 100%;
+        text-align: left;
+        border: 0;
+        background: transparent;
+        padding: 6px 12px;
+        font-size: 13px;
+        color: #212529;
+        cursor: pointer;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .umnik-item:hover { background: #e9ecef; }
+    .umnik-item.active { background: #dce8f8; color: #1b4d8c; }
+    .umnik-item.nested { padding-left: 22px; font-size: 12px; color: #495057; }
+    #umnik-deal-search { margin: 0 8px 6px; }
+</style>
+<button id="umnik-toggle" type="button" class="btn btn-dark">Чат умника</button>
+<div id="umnik-panel" aria-live="polite">
+    <aside id="umnik-sidebar">
+        <div class="d-flex justify-content-between align-items-center px-2 py-2 border-bottom">
+            <strong class="small mb-0">Умник</strong>
+        </div>
+        <div id="umnik-sidebar-scroll">
+            <div class="umnik-sec-row">
+                <div class="umnik-sec" id="umnik-sec-general">Общие вопросы</div>
+                <button id="umnik-new-general" type="button" class="btn btn-sm btn-outline-primary umnik-new-btn">Новый</button>
+            </div>
+            <div id="umnik-general-list"></div>
+            <div class="umnik-sec-row">
+                <div class="umnik-sec">Проекты</div>
+                <button id="umnik-new-deal" type="button" class="btn btn-sm btn-outline-primary umnik-new-btn" disabled>Новый</button>
+            </div>
+            <input id="umnik-deal-search" class="form-control form-control-sm" type="search" placeholder="Найти проект" autocomplete="off">
+            <div id="umnik-deal-list"></div>
+        </div>
+    </aside>
+    <div id="umnik-main">
+        <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+            <strong id="umnik-title">Общие вопросы</strong>
+            <span id="umnik-subtitle" class="small text-muted">новый чат</span>
+        </div>
+        <div id="umnik-log"></div>
+        <form id="umnik-form" class="border-top p-2">
+            {% csrf_token %}
+            <div id="umnik-pending" class="umnik-pending"></div>
+            <div class="d-flex gap-2">
+                <input type="file" id="umnik-file" class="d-none" multiple>
+                <button type="button" id="umnik-attach" class="btn btn-sm btn-outline-secondary" title="Прикрепить файл или фото с компьютера">📎</button>
+                <button type="button" id="umnik-attach-srv" class="btn btn-sm btn-outline-secondary" title="Вложить файл с сервера по пути (Общая_Рабочая, umnik, crm_files)">Сервер</button>
+                <input id="umnik-input" class="form-control form-control-sm" autocomplete="off" placeholder="Спросить или изменить — права как у вас в CRM">
+                <button class="btn btn-sm btn-primary" type="submit">Ок</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+(function () {
+    var panel = document.getElementById('umnik-panel');
+    var toggles = [document.getElementById('umnik-toggle'), document.getElementById('umnik-nav-toggle')].filter(Boolean);
+    var form = document.getElementById('umnik-form');
+    var input = document.getElementById('umnik-input');
+    var log = document.getElementById('umnik-log');
+    var generalList = document.getElementById('umnik-general-list');
+    var dealList = document.getElementById('umnik-deal-list');
+    var dealSearch = document.getElementById('umnik-deal-search');
+    var titleEl = document.getElementById('umnik-title');
+    var subtitleEl = document.getElementById('umnik-subtitle');
+    var newGeneralBtn = document.getElementById('umnik-new-general');
+    var newDealBtn = document.getElementById('umnik-new-deal');
+    var fileInput = document.getElementById('umnik-file');
+    var attachBtn = document.getElementById('umnik-attach');
+    var attachSrvBtn = document.getElementById('umnik-attach-srv');
+    var pendingBar = document.getElementById('umnik-pending');
+    if (!panel || !toggles.length || !form || !input || !log) return;
+
+    var pageDealId = "{% if umnik_deal_id %}{{ umnik_deal_id }}{% endif %}";
+    var urls = {
+        bootstrap: "{% url 'umnik_chat_bootstrap' %}",
+        create: "{% url 'umnik_chat_new' %}",
+        send: "{% url 'umnik_chat_send' %}",
+        upload: "{% url 'umnik_chat_upload' %}",
+        thread: "{% url 'umnik_chat_thread' 0 %}".replace('/0/', '/')
+    };
+    var state = {
+        threads: [],
+        deals: [],
+        threadId: null,
+        kind: 'general',
+        dealId: pageDealId || null,
+        loaded: false,
+        pending: []
+    };
+
+    function renderAttachments(host, list) {
+        if (!list || !list.length) return;
+        var box = document.createElement('div');
+        box.className = 'umnik-att';
+        list.forEach(function (att) {
+            if (att.is_image) {
+                var a = document.createElement('a');
+                a.href = att.url; a.target = '_blank'; a.rel = 'noopener';
+                var img = document.createElement('img');
+                img.src = att.url; img.alt = att.name; img.loading = 'lazy';
+                a.appendChild(img);
+                box.appendChild(a);
+            } else {
+                var link = document.createElement('a');
+                link.href = att.url; link.target = '_blank'; link.rel = 'noopener';
+                link.textContent = (att.is_pdf ? '📄 ' : '📎 ') + att.name;
+                link.title = att.name;
+                box.appendChild(link);
+            }
+        });
+        host.appendChild(box);
+    }
+    function renderPending() {
+        pendingBar.innerHTML = '';
+        state.pending.forEach(function (att) {
+            var chip = document.createElement('div');
+            chip.className = 'umnik-chip';
+            var label = document.createElement('span');
+            label.textContent = (att.is_image ? '🖼 ' : att.is_pdf ? '📄 ' : '📎 ') + att.name;
+            var x = document.createElement('button');
+            x.type = 'button'; x.textContent = '×'; x.title = 'Убрать';
+            x.addEventListener('click', function () {
+                state.pending = state.pending.filter(function (item) { return item.id !== att.id; });
+                renderPending();
+            });
+            chip.appendChild(label); chip.appendChild(x);
+            pendingBar.appendChild(chip);
+        });
+    }
+    function uploadForm(fd) {
+        fd.append('thread_id', state.threadId || '');
+        fd.append('deal_id', state.kind === 'deal' ? (state.dealId || '') : '');
+        return fetch(urls.upload, {method: 'POST', headers: {'X-CSRFToken': csrfToken()}, body: fd})
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (!data.ok) { add('err', data.answer || 'Файл не прикреплён.'); return; }
+                if (!state.threadId && data.thread_id) state.threadId = data.thread_id;
+                state.pending.push(data.attachment);
+                renderPending();
+            })
+            .catch(function () { add('err', 'Файл не дошёл до сервера.'); });
+    }
+    function uploadFiles(files) {
+        // последовательно: первый запрос может создать нить, остальные должны попасть в неё же
+        Array.prototype.reduce.call(files || [], function (chain, file) {
+            return chain.then(function () {
+                var fd = new FormData();
+                fd.append('file', file);
+                return uploadForm(fd);
+            });
+        }, Promise.resolve());
+    }
+    function attachFromServer() {
+        var path = window.prompt('Путь к файлу на сервере (например D:\\Общая_Рабочая\\2026\\Планировки\\Юра\\4МД Денис Орехово В1.pdf):', '');
+        if (!path) return;
+        fetch(urls.upload, {
+            method: 'POST',
+            headers: headers(),
+            body: JSON.stringify({server_path: path, thread_id: state.threadId || null, deal_id: state.kind === 'deal' ? state.dealId : null})
+        }).then(function (res) { return res.json(); })
+          .then(function (data) {
+              if (!data.ok) { add('err', data.answer || 'Файл не прикреплён.'); return; }
+              if (!state.threadId && data.thread_id) state.threadId = data.thread_id;
+              state.pending.push(data.attachment);
+              renderPending();
+          })
+          .catch(function () { add('err', 'Не удалось прочитать файл с сервера.'); });
+    }
+
+    function csrfToken() {
+        var field = form.querySelector('[name=csrfmiddlewaretoken]');
+        if (field && field.value) return field.value;
+        var match = document.cookie.match(/csrftoken=([^;]+)/);
+        return match ? decodeURIComponent(match[1]) : '';
+    }
+    function headers() {
+        return {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken()};
+    }
+    function add(role, text, attachments) {
+        var el = document.createElement('div');
+        el.className = 'umnik-msg ' + role;
+        var prefix = (role === 'user' ? 'Вы: ' : role === 'assistant' ? 'Умник: ' : '');
+        var body = document.createElement('span');
+        body.textContent = prefix + (text || '');
+        el.appendChild(body);
+        renderAttachments(el, attachments);
+        log.appendChild(el);
+        log.scrollTop = log.scrollHeight;
+        return el;
+    }
+    function clearLog() {
+        log.innerHTML = '';
+    }
+    function currentThread() {
+        return state.threads.find(function (item) { return String(item.id) === String(state.threadId); }) || null;
+    }
+    function remember() {
+        try {
+            localStorage.setItem('umnik-open', JSON.stringify({threadId: state.threadId, kind: state.kind, dealId: state.dealId}));
+        } catch (e) {}
+    }
+    function restore() {
+        try {
+            return JSON.parse(localStorage.getItem('umnik-open') || 'null');
+        } catch (e) { return null; }
+    }
+    function draftKey() {
+        if (state.threadId) return 'umnik-draft:t' + state.threadId;
+        if (state.kind === 'deal') return 'umnik-draft:d' + (state.dealId || '');
+        return 'umnik-draft:general';
+    }
+    function saveDraft() {
+        try {
+            var val = input.value || '';
+            if (val) localStorage.setItem(draftKey(), val);
+            else localStorage.removeItem(draftKey());
+        } catch (e) {}
+    }
+    function applyDraft() {
+        try {
+            var val = localStorage.getItem(draftKey());
+            if (!val && state.threadId) {
+                // черновик, начатый в «новом» чате до его создания
+                var fallback = state.kind === 'deal'
+                    ? 'umnik-draft:d' + (state.dealId || '')
+                    : 'umnik-draft:general';
+                val = localStorage.getItem(fallback);
+                if (val) { localStorage.removeItem(fallback); localStorage.setItem(draftKey(), val); }
+            }
+            input.value = val || '';
+        } catch (e) {}
+    }
+    function clearDraft() {
+        try { localStorage.removeItem(draftKey()); } catch (e) {}
+    }
+    function selectedDeal() {
+        if (!state.dealId) return null;
+        return state.deals.find(function (item) { return String(item.id) === String(state.dealId); }) || null;
+    }
+    function updateNewButtons() {
+        var deal = selectedDeal();
+        var thread = currentThread();
+        var code = (deal && deal.project_code)
+            || (state.kind === 'deal' && thread && thread.deal_code)
+            || '';
+        if (state.dealId && (deal || code)) {
+            newDealBtn.disabled = false;
+            newDealBtn.textContent = code ? 'Новый · ' + code : 'Новый';
+            newDealBtn.title = code ? 'Новый чат по проекту ' + code : 'Новый чат по проекту';
+        } else {
+            newDealBtn.disabled = true;
+            newDealBtn.textContent = 'Новый';
+            newDealBtn.title = 'Сначала выберите проект в списке';
+        }
+    }
+    function setHeading() {
+        var thread = currentThread();
+        if (state.kind === 'deal') {
+            var deal = state.deals.find(function (item) { return String(item.id) === String(state.dealId); });
+            titleEl.textContent = (deal && deal.project_code) || (thread && thread.deal_code) || 'Проект';
+            subtitleEl.textContent = (thread && thread.title) || 'чат по проекту';
+        } else {
+            titleEl.textContent = 'Общие вопросы';
+            subtitleEl.textContent = (thread && thread.title) || 'новый чат';
+        }
+    }
+    function renderSidebar() {
+        var general = state.threads.filter(function (item) { return item.kind === 'general'; });
+        generalList.innerHTML = '';
+        if (!general.length) {
+            var empty = document.createElement('div');
+            empty.className = 'px-3 pb-2 small text-muted';
+            empty.textContent = 'Пока пусто — нажмите «Новый»';
+            generalList.appendChild(empty);
+        }
+        general.forEach(function (thread) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'umnik-item' + (String(thread.id) === String(state.threadId) ? ' active' : '');
+            btn.textContent = thread.title || 'Новый чат';
+            btn.addEventListener('click', function () { openThread(thread.id); });
+            generalList.appendChild(btn);
+        });
+
+        var query = ((dealSearch && dealSearch.value) || '').trim().toLowerCase();
+        dealList.innerHTML = '';
+        state.deals.forEach(function (deal) {
+            if (query && (deal.project_code || '').toLowerCase().indexOf(query) === -1) return;
+            var wrap = document.createElement('div');
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'umnik-item' + (state.kind === 'deal' && String(deal.id) === String(state.dealId) && !state.threadId ? ' active' : '');
+            var dealThreads = state.threads.filter(function (item) {
+                return item.kind === 'deal' && String(item.deal_id) === String(deal.id);
+            });
+            if (dealThreads.some(function (item) { return String(item.id) === String(state.threadId); })) {
+                btn.classList.add('active');
+            }
+            btn.textContent = deal.project_code;
+            btn.addEventListener('click', function () { openDeal(deal.id); });
+            wrap.appendChild(btn);
+            if (state.kind === 'deal' && String(state.dealId) === String(deal.id) && dealThreads.length > 1) {
+                dealThreads.forEach(function (thread) {
+                    var nested = document.createElement('button');
+                    nested.type = 'button';
+                    nested.className = 'umnik-item nested' + (String(thread.id) === String(state.threadId) ? ' active' : '');
+                    nested.textContent = thread.title || 'Новый чат';
+                    nested.addEventListener('click', function (event) {
+                        event.stopPropagation();
+                        openThread(thread.id);
+                    });
+                    wrap.appendChild(nested);
+                });
+            }
+            dealList.appendChild(wrap);
+        });
+        setHeading();
+        updateNewButtons();
+    }
+    function showMessages(messages) {
+        clearLog();
+        (messages || []).forEach(function (item) {
+            if (item && item.role && (item.content || (item.attachments || []).length)) {
+                add(item.role, item.content, item.attachments);
+            }
+        });
+        if (!(messages || []).length) {
+            add('assistant', state.kind === 'deal'
+                ? 'Это чат по проекту. История сохраняется. «Новый» начнёт отдельный разговор.'
+                : 'Общие вопросы по CRM. История сохраняется. «Новый» откроет чистый чат.');
+        }
+    }
+    function openThread(threadId) {
+        fetch(urls.thread + threadId + '/', {headers: {'Accept': 'application/json'}})
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (!data.ok) return;
+                state.threadId = data.thread.id;
+                state.kind = data.thread.kind;
+                state.dealId = data.thread.deal_id || null;
+                var idx = state.threads.findIndex(function (item) { return item.id === data.thread.id; });
+                if (idx >= 0) state.threads[idx] = data.thread;
+                else state.threads.unshift(data.thread);
+                remember();
+                renderSidebar();
+                showMessages(data.messages || []);
+                applyDraft();
+                input.focus();
+            });
+    }
+    function openDeal(dealId) {
+        state.kind = 'deal';
+        state.dealId = dealId;
+        var existing = state.threads.find(function (item) {
+            return item.kind === 'deal' && String(item.deal_id) === String(dealId);
+        });
+        if (existing) {
+            openThread(existing.id);
+            return;
+        }
+        state.threadId = null;
+        remember();
+        renderSidebar();
+        showMessages([]);
+        applyDraft();
+        input.focus();
+    }
+    function createThread(kind, dealId) {
+        fetch(urls.create, {
+            method: 'POST',
+            headers: headers(),
+            body: JSON.stringify({kind: kind, deal_id: dealId || null})
+        }).then(function (res) { return res.json(); })
+          .then(function (data) {
+              if (!data.ok) return;
+              var carry = input.value || '';
+              state.threads.unshift(data.thread);
+              state.threadId = data.thread.id;
+              state.kind = data.thread.kind;
+              state.dealId = data.thread.deal_id || null;
+              remember();
+              renderSidebar();
+              showMessages([]);
+              if (carry) { input.value = carry; saveDraft(); }
+              else applyDraft();
+              input.focus();
+          });
+    }
+    function bootstrap() {
+        fetch(urls.bootstrap, {headers: {'Accept': 'application/json'}})
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (!data.ok) return;
+                state.threads = data.threads || [];
+                state.deals = data.deals || [];
+                state.loaded = true;
+                if (pageDealId) {
+                    openDeal(pageDealId);
+                    return;
+                }
+                var saved = restore();
+                if (saved && saved.threadId && state.threads.some(function (item) { return String(item.id) === String(saved.threadId); })) {
+                    openThread(saved.threadId);
+                    return;
+                }
+                var general = state.threads.find(function (item) { return item.kind === 'general'; });
+                if (general) openThread(general.id);
+                else {
+                    renderSidebar();
+                    showMessages([]);
+                    applyDraft();
+                }
+            });
+    }
+
+    toggles.forEach(function (toggle) {
+        toggle.addEventListener('click', function () {
+            panel.classList.toggle('open');
+            if (panel.classList.contains('open')) {
+                if (!state.loaded) bootstrap();
+                input.focus();
+            }
+        });
+    });
+    newGeneralBtn.addEventListener('click', function () {
+        state.kind = 'general';
+        state.dealId = null;
+        createThread('general', null);
+    });
+    newDealBtn.addEventListener('click', function () {
+        if (!state.dealId) return;
+        state.kind = 'deal';
+        createThread('deal', state.dealId);
+    });
+    var generalSec = document.getElementById('umnik-sec-general');
+    if (generalSec) {
+        generalSec.style.cursor = 'pointer';
+        generalSec.addEventListener('click', function () {
+            state.kind = 'general';
+            state.dealId = null;
+            var latest = state.threads.find(function (item) { return item.kind === 'general'; });
+            if (latest) openThread(latest.id);
+            else {
+                state.threadId = null;
+                remember();
+                renderSidebar();
+                showMessages([]);
+                applyDraft();
+            }
+        });
+    }
+    if (dealSearch) {
+        dealSearch.addEventListener('input', renderSidebar);
+    }
+    input.addEventListener('input', saveDraft);
+    window.addEventListener('pagehide', saveDraft);
+    window.addEventListener('beforeunload', saveDraft);
+    attachBtn.addEventListener('click', function () { fileInput.click(); });
+    fileInput.addEventListener('change', function () {
+        uploadFiles(fileInput.files);
+        fileInput.value = '';
+    });
+    attachSrvBtn.addEventListener('click', attachFromServer);
+    form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var message = (input.value || '').trim();
+        var pending = state.pending.slice();
+        if (!message && !pending.length) return;
+        input.value = '';
+        clearDraft();
+        state.pending = [];
+        renderPending();
+        add('user', message, pending);
+        var waiting = document.createElement('div');
+        waiting.className = 'umnik-msg assistant';
+        waiting.textContent = 'Умник: думаю…';
+        log.appendChild(waiting);
+        log.scrollTop = log.scrollHeight;
+        var body = {
+            message: message,
+            thread_id: state.threadId,
+            deal_id: state.kind === 'deal' ? state.dealId : null,
+            attachment_ids: pending.map(function (att) { return att.id; })
+        };
+        fetch(urls.send, {
+            method: 'POST',
+            headers: headers(),
+            body: JSON.stringify(body)
+        }).then(function (res) { return res.json().then(function (data) { return {ok: res.ok, data: data}; }); })
+          .then(function (pack) {
+              waiting.remove();
+              var answer = (pack.data && pack.data.answer) || 'Нет ответа.';
+              add(pack.ok ? 'assistant' : 'err', answer, pack.data && pack.data.answer_attachments);
+              if (pack.data && pack.data.thread) {
+                  state.threadId = pack.data.thread.id;
+                  state.kind = pack.data.thread.kind;
+                  state.dealId = pack.data.thread.deal_id || state.dealId;
+                  var idx = state.threads.findIndex(function (item) { return item.id === pack.data.thread.id; });
+                  if (idx >= 0) state.threads[idx] = pack.data.thread;
+                  else state.threads.unshift(pack.data.thread);
+                  remember();
+                  renderSidebar();
+              }
+              if (pack.data && pack.data.changed && state.dealId && String(state.dealId) === String(pageDealId)) {
+                  window.setTimeout(function () { window.location.reload(); }, 1200);
+              }
+          })
+          .catch(function () {
+              waiting.remove();
+              add('err', 'Сеть не дошла до умника.');
+          });
+    });
+})();
+</script>
+{% endif %}

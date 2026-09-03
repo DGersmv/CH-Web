@@ -25,7 +25,13 @@
                             <a class="nav-link {% if current_path == '/clients/' %}active{% endif %}" href="{% url 'clients' %}">Клиенты</a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link {% if '/service/' in current_path %}active{% endif %}" href="{% url 'service_list' %}">Сервис</a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link {% if current_path == '/files/' %}active{% endif %}" href="{% url 'files' %}">Файлы</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if current_path == '/archive/' %}active{% endif %}" href="{% url 'archive_search' %}">Архив</a>
                         </li>
                         {% if is_leadership_user %}
                             <li class="nav-item">
@@ -59,16 +65,30 @@
                         >{{ unread_notifications }}</span>
                     </a>
                     <span class="navbar-text me-3">Вы вошли как {{ current_user.username }}</span>
+                    {% if show_umnik_chat %}
+                        <button id="umnik-nav-toggle" type="button" class="btn btn-dark btn-sm me-2">Чат умника</button>
+                    {% endif %}
                     <a class="btn btn-outline-secondary btn-sm" href="{% url 'logout' %}" target="_top">Выход</a>
                 </div>
             </div>
         </nav>
     {% endif %}
     <main class="container">
+        {% if messages %}
+            <div class="mb-3">
+                {% for message in messages %}
+                    <div class="alert alert-{% if message.tags == 'error' %}danger{% elif message.tags %}{{ message.tags }}{% else %}info{% endif %} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
         {% block content %}{% endblock %}
     </main>
     <script src="{% static 'vendor/htmx/htmx.min.js' %}"></script>
     <script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
+    {% include "includes/umnik_chat.html" %}
     <script>
         document.body.addEventListener('taskCreated', function () {
             const modalEl = document.getElementById('taskCreateModal');

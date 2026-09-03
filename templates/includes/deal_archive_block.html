@@ -1,0 +1,51 @@
+<div class="card">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <span>Архив планировок</span>
+        {% if archive.query %}
+            <span class="small text-muted">{{ archive.query }}</span>
+        {% endif %}
+    </div>
+    <div class="card-body py-2">
+        {% if archive.error == 'not_configured' %}
+            <p class="text-muted mb-0 small">Умник не подключён. В `.env` задайте `UMNIK_URL` (например `http://host.docker.internal:7861`).</p>
+        {% elif archive.error %}
+            <p class="text-muted mb-0 small">Архив сейчас недоступен. Карточка сделки работает как обычно.</p>
+        {% elif archive.layouts %}
+            {% for layout in archive.layouts %}
+                <div class="{% if not forloop.last %}mb-3 pb-3 border-bottom{% endif %}">
+                    <div class="fw-semibold">{{ layout.name }}{% if layout.version %} {{ layout.version }}{% endif %}</div>
+                    <div class="small">
+                        {% if layout.area_total %}
+                            Площадь: <strong>{{ layout.area_total }} м²</strong>
+                            {% if layout.area_living and layout.area_living != layout.area_total %}
+                                <span class="text-muted">(жилая {{ layout.area_living }} м²)</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-muted">Площадь в таблицах не размечена</span>
+                        {% endif %}
+                    </div>
+                    {% if layout.room_counts %}
+                        <div class="small text-muted">
+                            Состав:
+                            {% for kind, count in layout.room_counts.items %}
+                                {{ kind }} {{ count }}{% if not forloop.last %}, {% endif %}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    {% if layout.rooms %}
+                        <div class="small mt-1">
+                            {% for room in layout.rooms %}
+                                {{ room.name }}{% if room.area_m2 %} {{ room.area_m2 }} м²{% endif %}{% if not forloop.last %}; {% endif %}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    {% if layout.path %}
+                        <div class="small text-muted text-break mt-1">{{ layout.path }}</div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        {% else %}
+            <p class="text-muted mb-0 small">В архиве нет таблиц планировок по этому объекту. Искали: {{ archive.query|default:deal.project_code }}.</p>
+        {% endif %}
+    </div>
+</div>

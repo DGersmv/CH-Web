@@ -183,6 +183,50 @@ CHANNEL_LAYERS = {
     },
 }
 
+# Архив планировок (умник на LAN). Пустой URL — блок на сделке показывает «не подключён».
+UMNIK_URL = os.getenv('UMNIK_URL', '').strip()
+UMNIK_TOKEN = os.getenv('UMNIK_TOKEN', '').strip()
+UMNIK_TIMEOUT = float(os.getenv('UMNIK_TIMEOUT', '3') or 3)
+UMNIK_CHAT_TIMEOUT = float(os.getenv('UMNIK_CHAT_TIMEOUT', '180') or 180)
+# Базовый URL CRM, по которому умник с другой машины скачивает вложения чата.
+# Напр. http://192.168.1.10:8000 — без хвостового слэша.
+UMNIK_CRM_BASE_URL = os.getenv('UMNIK_CRM_BASE_URL', '').strip().rstrip('/')
+# Файлы <= этого размера уходят умнику прямо в payload (base64), крупнее — по ссылке.
+UMNIK_CHAT_INLINE_MAX_MB = float(os.getenv('UMNIK_CHAT_INLINE_MAX_MB', '15') or 15)
+# Вариант B: та же папка вложений чата, но путём, который открывает машина умника
+# (UNC \\HOST\CH-CRM\crm_files или подключённый сетевой диск). Соответствует
+# CRM_FILES_ROOT. Если пусто — поле shared_path умнику не отправляется.
+UMNIK_SHARED_ROOT = os.getenv('UMNIK_SHARED_ROOT', r'D:\CH-CRM\crm_files').strip().rstrip('/\\')
+
+# Общий чат: куда складываем вложения (файлы и фото из чата).
+UMNIK_CHAT_FILES_DIR = CRM_FILES_ROOT / 'umnik_chat'
+UMNIK_CHAT_MAX_UPLOAD_MB = int(os.getenv('UMNIK_CHAT_MAX_UPLOAD_MB', '40') or 40)
+# Разрешённые источники для «вложить файл с сервера»: Windows-префикс -> путь внутри контейнера.
+# Пути внутри контейнера появляются из volume-монтирований docker-compose (ro).
+UMNIK_CHAT_SOURCE_MAP = {
+    r'D:\Общая_Рабочая': os.getenv('UMNIK_SRC_RABOCHAYA', '/mnt/rabochaya'),
+    r'D:\Scan_Pdf': os.getenv('UMNIK_SRC_SCAN', '/mnt/scan_pdf'),
+    r'D:\CH-CRM\umnik': os.getenv('UMNIK_SRC_SCAN', '/mnt/scan_pdf'),
+    r'D:\CH-CRM\crm_files': str(CRM_FILES_ROOT),
+}
+
+# Телеграм-бот диспетчерской. Пусто — команда run_telegram_bot просто не стартует.
+# Токен и ID группы держим ТОЛЬКО в .env, в git они не попадают.
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '').strip()
+# ID группы «диспетчерская» (все боссы + бот-админ). Формат обычной группы -123456789
+# или супергруппы -1001234567890. Вся переписка в этой группе — один чат с умником.
+try:
+    TELEGRAM_DISPATCH_CHAT_ID = int((os.getenv('TELEGRAM_DISPATCH_CHAT_ID', '0') or '0').strip())
+except ValueError:
+    TELEGRAM_DISPATCH_CHAT_ID = 0
+# Long polling: сколько секунд держать getUpdates и таймаут запроса.
+TELEGRAM_POLL_TIMEOUT = int(os.getenv('TELEGRAM_POLL_TIMEOUT', '50') or 50)
+# Максимальный размер скачиваемого из телеграма файла (фото/видео/документ), МБ.
+TELEGRAM_MAX_FILE_MB = int(os.getenv('TELEGRAM_MAX_FILE_MB', '45') or 45)
+# HTTP-прокси до api.telegram.org. Если пусто — прямое IPv4-соединение.
+# На сетях, где Telegram закрыт, тот же прокси, что OPENROUTER_PROXY у умника.
+TELEGRAM_PROXY = (os.getenv('TELEGRAM_PROXY') or os.getenv('HTTPS_PROXY') or '').strip()
+
 USE_HTTPS = os.getenv('USE_HTTPS', 'False').lower() == 'true'
 SESSION_COOKIE_SECURE = USE_HTTPS
 CSRF_COOKIE_SECURE = USE_HTTPS

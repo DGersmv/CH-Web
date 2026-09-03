@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div>
+            <h1 class="mb-1">Сервис / Рекламации</h1>
+            <p class="text-muted mb-0">Обращения после сдачи объекта: гарантия, доработки, вопросы. Открытых: {{ open_count }}.</p>
+        </div>
+        {% if can_edit %}
+            <a href="{% url 'service_create' %}" class="btn btn-primary">Новое обращение</a>
+        {% endif %}
+    </div>
+
+    <form method="get" class="row g-2 align-items-end mb-3">
+        <div class="col-auto">
+            <label class="form-label small mb-1">Статус</label>
+            <select name="status" class="form-select form-select-sm">
+                <option value="open" {% if selected_status == 'open' %}selected{% endif %}>Только открытые</option>
+                <option value="" {% if selected_status == '' %}selected{% endif %}>Все</option>
+                {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="form-label small mb-1">Тип</label>
+            <select name="kind" class="form-select form-select-sm">
+                <option value="">Любой</option>
+                {% for value, label in kind_choices %}
+                    <option value="{{ value }}" {% if selected_kind == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="form-label small mb-1">Поиск</label>
+            <input type="search" name="q" value="{{ search_query }}" class="form-control form-control-sm" placeholder="Текст, телефон, код проекта">
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-outline-secondary btn-sm">Показать</button>
+        </div>
+    </form>
+
+    <div class="card">
+        <div class="card-body p-0">
+            {% if service_requests %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead>
+                            <tr>
+                                <th>№</th>
+                                <th>Обращение</th>
+                                <th>Тип</th>
+                                <th>Объект</th>
+                                <th>Приоритет</th>
+                                <th>Статус</th>
+                                <th>Ответственный</th>
+                                <th>Создано</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for sr in service_requests %}
+                                <tr>
+                                    <td><a href="{% url 'service_detail' sr.id %}">SR-{{ sr.number }}</a></td>
+                                    <td>
+                                        <a href="{% url 'service_detail' sr.id %}" class="text-decoration-none">{{ sr.title }}</a>
+                                        {% if sr.reporter_name or sr.reporter_phone %}
+                                            <div class="small text-muted">{{ sr.reporter_name }}{% if sr.reporter_phone %} · {{ sr.reporter_phone }}{% endif %}</div>
+                                        {% endif %}
+                                    </td>
+                                    <td class="small">{{ sr.get_kind_display }}</td>
+                                    <td class="small">
+                                        {% if sr.deal %}<a href="{% url 'deal_detail' sr.deal.id %}">{{ sr.deal.project_code }}</a>
+                                        {% elif sr.client %}{{ sr.client.full_name }}
+                                        {% else %}<span class="text-muted">—</span>{% endif %}
+                                    </td>
+                                    <td><span class="badge {{ sr.priority_badge_class }}">{{ sr.get_priority_display }}</span></td>
+                                    <td><span class="badge {{ sr.status_badge_class }}">{{ sr.get_status_display }}</span></td>
+                                    <td class="small">{{ sr.assignee.username|default:"—" }}</td>
+                                    <td class="small text-muted">{{ sr.created_at|date:"d.m.Y" }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="text-muted p-3 mb-0">Обращений не найдено.</p>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}

@@ -15,6 +15,21 @@
     </div>
 
     <div class="card mb-4">
+        <div class="card-header">Архив планировок (умник)</div>
+        <div class="card-body">
+            {% if umnik_configured %}
+                <p class="mb-2">CRM спрашивает архив по коду сделки:</p>
+                <div class="input-group">
+                    <input type="text" class="form-control" readonly value="{{ umnik_url }}/crm/lookup">
+                </div>
+                <div class="small text-muted mt-2">Токен берётся из <code>UMNIK_TOKEN</code> в <code>.env</code>.</div>
+            {% else %}
+                <p class="text-muted mb-0">Не задан <code>UMNIK_URL</code>. Блок на карточке сделки покажет заглушку.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card mb-4">
         <div class="card-header">Новый integration token</div>
         <div class="card-body">
             {% if created_token %}

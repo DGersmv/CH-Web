@@ -1,20 +1,25 @@
 import io
+import json
 import mimetypes
 import shutil
 import zipfile
+
+from django.utils.text import slugify
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
+from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.http import FileResponse, Http404, HttpResponse, HttpResponseBadRequest, HttpResponseForbidden
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.generic.edit import FormView
 from django.utils import timezone
 
-from accounts.permissions import can_access_file_source, is_file_only_role
+from accounts.permissions import can_access_file_source, can_use_umnik_chat, is_file_only_role, umnik_capabilities
 from clients.models import Client, parse_quick_client_name
 
 from .forms import (
@@ -30,10 +35,15 @@ from .client_portal import create_portal_session, get_portal_session, touch_sess
 from .models import (
     ChangeLog,
     Deal,
+    DealApproval,
+    DealDesignSection,
     DealBathroom,
     DealClientMessage,
     DealClientMessageAttachment,
     ProjectFile,
+    ProjectVersion,
+    UmnikChatAttachment,
+    UmnikChatThread,
     build_project_code_from_parts,
     normalize_project_code,
 )
@@ -46,8 +56,12 @@ from .services.bathrooms import (
     get_template_section,
 )
 from .services.additional_options import additional_options_rows, additional_options_totals, ensure_additional_option_lines
+from .services.approvals import approvals_gate, build_approvals_context, ensure_deal_approvals
+from .services.design import build_design_context, design_gate, ensure_deal_design_sections
 from .services.storage_paths import ensure_deal_dirs, get_deal_root, get_files_root
 from .services.calculation_engine import CALC_SCHEMA_VERSION, calculate_config
+from .services import umnik_chat as umnik_chat_store
+from .services.umnik import ask_umnik_chat, fetch_archive, lookup_deal_archive
 
 from catalog.forms import COST_ITEM_UNIT_CHOICES_RU
 from system_settings.events import record_domain_event
@@ -168,6 +182,285 @@ def update_deal_margin(request, deal_id):
         )
 
     return render(request, 'includes/deal_margin_block.html', {'deal': deal})
+
+
+# Модуль автоматических расчётов (сметы, санузлы, доп.опции, электрика) временно
+# отключён: цену менеджер проставляет вручную в поле «Договорная цена».
+# Код расчётов не удалён — при необходимости вернуть, поставить True.
+CONFIGURATOR_ENABLED = getattr(settings, 'CONFIGURATOR_ENABLED', False)
+
+
+def _configurator_disabled_response(request, deal_id):
+    """Единый ответ для отключённых страниц расчётов."""
+    messages.info(
+        request,
+        'Модуль автоматических расчётов отключён. Договорную цену внесите вручную в карточке сделки.',
+    )
+    target_url = reverse('deal_detail', kwargs={'pk': deal_id})
+    if request.headers.get('HX-Request') == 'true':
+        response = HttpResponse('')
+        response['HX-Redirect'] = target_url
+        return response
+    return redirect(target_url)
+
+
+@login_required
+@require_POST
+def update_deal_agreed_price(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+
+    raw_price = (request.POST.get('agreed_price') or '').strip().replace(' ', '').replace(',', '.')
+    note = (request.POST.get('agreed_price_note') or '').strip()[:300]
+
+    new_price = None
+    if raw_price:
+        try:
+            new_price = Decimal(raw_price).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        except (InvalidOperation, ValueError):
+            return HttpResponseBadRequest('Invalid price')
+        if new_price < 0:
+            return HttpResponseBadRequest('Invalid price')
+
+    old_price = deal.agreed_price
+    if old_price != new_price or deal.agreed_price_note != note:
+        deal.agreed_price = new_price
+        deal.agreed_price_note = note
+        deal.agreed_price_updated_at = timezone.now()
+        deal.save(update_fields=[
+            'agreed_price', 'agreed_price_note', 'agreed_price_updated_at', 'updated_at',
+        ])
+        ChangeLog.objects.create(
+            project_version=_ensure_latest_version_for_log(deal, request.user),
+            changed_by=request.user,
+            field_path='agreed_price',
+            old_value={'value': str(old_price) if old_price is not None else None},
+            new_value={'value': str(new_price) if new_price is not None else None, 'note': note},
+        )
+
+    return render(
+        request,
+        'includes/deal_price_block.html',
+        {'deal': deal, 'is_file_only_role': is_file_only_role(request.user)},
+    )
+
+
+@login_required
+@require_GET
+def deal_archive(request, deal_id):
+    deal = get_object_or_404(Deal, pk=deal_id)
+    archive = lookup_deal_archive(deal)
+    return render(
+        request,
+        'includes/deal_archive_block.html',
+        {
+            'deal': deal,
+            'archive': archive,
+        },
+    )
+
+
+@login_required
+@require_GET
+def archive_search(request):
+    query = (request.GET.get('q') or '').strip()
+    archive = fetch_archive(query, limit=20) if query else {'ok': True, 'query': '', 'layouts': [], 'error': ''}
+    return render(request, 'archive_search.html', {'query': query, 'archive': archive})
+
+
+def _umnik_denied():
+    return JsonResponse({'ok': False, 'error': 'forbidden', 'answer': 'Сначала войдите в CRM.'}, status=403)
+
+
+def _umnik_json_body(request) -> dict:
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except json.JSONDecodeError:
+        payload = {}
+    return payload if isinstance(payload, dict) else {}
+
+
+@login_required
+@require_GET
+def umnik_chat_bootstrap(request):
+    if not can_use_umnik_chat(request.user):
+        return _umnik_denied()
+    threads = [umnik_chat_store.serialize_thread(item) for item in umnik_chat_store.user_threads(request.user)]
+    deals = list(umnik_chat_store.visible_deals())
+    return JsonResponse({'ok': True, 'threads': threads, 'deals': deals})
+
+
+@login_required
+@require_POST
+def umnik_chat_new(request):
+    if not can_use_umnik_chat(request.user):
+        return _umnik_denied()
+    payload = _umnik_json_body(request)
+    kind = str(payload.get('kind') or UmnikChatThread.Kind.GENERAL).strip()
+    deal = None
+    if kind == UmnikChatThread.Kind.DEAL:
+        try:
+            deal_id = int(payload.get('deal_id'))
+        except (TypeError, ValueError):
+            return JsonResponse({'ok': False, 'error': 'deal_required'}, status=400)
+        deal = Deal.objects.filter(pk=deal_id).first()
+        if deal is None:
+            return JsonResponse({'ok': False, 'error': 'deal not found'}, status=404)
+    try:
+        thread = umnik_chat_store.create_thread(request.user, kind=kind, deal=deal)
+    except ValueError:
+        return JsonResponse({'ok': False, 'error': 'deal_required'}, status=400)
+    return JsonResponse({'ok': True, 'thread': umnik_chat_store.serialize_thread(thread), 'messages': []})
+
+
+@login_required
+@require_GET
+def umnik_chat_thread(request, thread_id):
+    if not can_use_umnik_chat(request.user):
+        return _umnik_denied()
+    thread = umnik_chat_store.get_thread(request.user, thread_id)
+    if thread is None:
+        return JsonResponse({'ok': False, 'error': 'not_found'}, status=404)
+    messages = [
+        umnik_chat_store.serialize_message(item)
+        for item in thread.messages.prefetch_related('attachments').all()
+    ]
+    return JsonResponse({'ok': True, 'thread': umnik_chat_store.serialize_thread(thread), 'messages': messages})
+
+
+def _umnik_thread_for_request(request, payload):
+    """Существующая нить или новая (general/deal) по данным запроса."""
+    thread = umnik_chat_store.get_thread(request.user, payload.get('thread_id'))
+    if thread is not None:
+        return thread, None
+    if payload.get('deal_id') not in (None, ''):
+        deal = Deal.objects.filter(pk=payload.get('deal_id')).first()
+        if deal is None:
+            return None, JsonResponse({'ok': False, 'error': 'deal not found', 'answer': 'Проект не найден.'}, status=404)
+        return umnik_chat_store.ensure_deal_thread(request.user, deal), None
+    return umnik_chat_store.create_thread(request.user, kind=UmnikChatThread.Kind.GENERAL), None
+
+
+@login_required
+@require_POST
+def umnik_chat_upload(request):
+    """Загрузка файла/фото в общий чат (multipart) или подтягивание файла с сервера (JSON)."""
+    if not can_use_umnik_chat(request.user):
+        return _umnik_denied()
+
+    if request.content_type and request.content_type.startswith('multipart/'):
+        thread = umnik_chat_store.get_thread(request.user, request.POST.get('thread_id'))
+        if thread is None:
+            deal = None
+            if request.POST.get('deal_id') not in (None, ''):
+                deal = Deal.objects.filter(pk=request.POST.get('deal_id')).first()
+            thread = (
+                umnik_chat_store.ensure_deal_thread(request.user, deal)
+                if deal is not None
+                else umnik_chat_store.create_thread(request.user, kind=UmnikChatThread.Kind.GENERAL)
+            )
+        uploaded = request.FILES.get('file')
+        if uploaded is None:
+            return JsonResponse({'ok': False, 'error': 'no_file', 'answer': 'Файл не выбран.'}, status=400)
+        limit = int(getattr(settings, 'UMNIK_CHAT_MAX_UPLOAD_MB', 40)) * 1024 * 1024
+        if uploaded.size > limit:
+            return JsonResponse({'ok': False, 'error': 'too_big', 'answer': f'Файл больше {limit // (1024 * 1024)} МБ.'}, status=400)
+        att = umnik_chat_store.save_upload(thread, uploaded, request.user)
+        return JsonResponse({'ok': True, 'thread_id': thread.id, 'attachment': umnik_chat_store.serialize_attachment(att)})
+
+    payload = _umnik_json_body(request)
+    raw_path = str(payload.get('server_path') or '').strip()
+    if not raw_path:
+        return JsonResponse({'ok': False, 'error': 'no_path', 'answer': 'Укажите путь к файлу на сервере.'}, status=400)
+    src = umnik_chat_store.resolve_server_path(raw_path)
+    if src is None:
+        return JsonResponse(
+            {'ok': False, 'error': 'not_allowed',
+             'answer': 'Файл не найден или путь вне разрешённых папок (Общая_Рабочая, umnik, crm_files).'},
+            status=400,
+        )
+    thread, err = _umnik_thread_for_request(request, payload)
+    if err is not None:
+        return err
+    att = umnik_chat_store.save_server_file(thread, src, raw_path, request.user)
+    return JsonResponse({'ok': True, 'thread_id': thread.id, 'attachment': umnik_chat_store.serialize_attachment(att)})
+
+
+@login_required
+@xframe_options_sameorigin
+@require_GET
+def umnik_chat_open_attachment(request, attachment_id):
+    if not can_use_umnik_chat(request.user):
+        return HttpResponseForbidden('Not allowed')
+    att = get_object_or_404(
+        UmnikChatAttachment.objects.select_related('thread'),
+        pk=attachment_id,
+    )
+    if att.thread.user_id != request.user.id and not request.user.is_superuser:
+        return HttpResponseForbidden('Not allowed')
+    path = att.absolute_path
+    if not path.exists() or not path.is_file():
+        raise Http404('File not found')
+    return FileResponse(path.open('rb'), as_attachment=False, filename=att.original_name)
+
+
+@login_required
+@require_POST
+def umnik_chat_send(request):
+    if not can_use_umnik_chat(request.user):
+        return _umnik_denied()
+    payload = _umnik_json_body(request)
+    message = str(payload.get('message') or '').strip()
+    attach_ids = payload.get('attachment_ids') or []
+    thread, err = _umnik_thread_for_request(request, payload)
+    if err is not None:
+        return err
+    atts = umnik_chat_store.pending_attachments(thread, attach_ids)
+    if not message and not atts:
+        return JsonResponse({'ok': False, 'error': 'empty', 'answer': 'Напишите вопрос или прикрепите файл.'}, status=400)
+
+    compact = umnik_chat_store.thread_history(thread)
+    user_msg = umnik_chat_store.append_message(thread, 'user', message, has_attachments=bool(atts))
+    umnik_chat_store.link_attachments(user_msg, atts)
+
+    result = ask_umnik_chat(
+        message=message or '(файл без комментария)',
+        history=compact,
+        actor=request.user.username,
+        deal_id=thread.deal_id,
+        deal_code=thread.deal.project_code if thread.deal_id else '',
+        capabilities=umnik_capabilities(request.user),
+        attachments=umnik_chat_store.model_attachments(atts),
+    )
+    answer = (result.get('answer') or '').strip() or 'Пустой ответ.'
+    answer_attachments = []
+    if result.get('ok'):
+        answer_msg = umnik_chat_store.append_message(thread, 'assistant', answer)
+        added = []
+        for item in result.get('attachments') or []:
+            raw = item.get('path') or item.get('server_path') if isinstance(item, dict) else str(item)
+            src = umnik_chat_store.resolve_server_path(raw or '')
+            if src is None:
+                continue
+            att = umnik_chat_store.save_server_file(thread, src, raw, None)
+            att.origin = UmnikChatAttachment.Origin.UMNIK
+            att.save(update_fields=['origin'])
+            added.append(att)
+        umnik_chat_store.link_attachments(answer_msg, added)
+        answer_attachments = [umnik_chat_store.serialize_attachment(a) for a in added]
+        thread.refresh_from_db()
+    status_code = 200 if result.get('ok') else 502
+    return JsonResponse(
+        {
+            **result,
+            'answer': answer,
+            'thread': umnik_chat_store.serialize_thread(thread),
+            'user_attachments': [umnik_chat_store.serialize_attachment(a) for a in atts],
+            'answer_attachments': answer_attachments,
+        },
+        status=status_code,
+    )
 
 
 class DealCreateView(LoginRequiredMixin, FormView):
@@ -674,6 +967,8 @@ def _recalc_draft_calculation(deal, draft):
 @login_required
 @require_POST
 def update_deal_cost_summary(request, deal_id):
+    if not CONFIGURATOR_ENABLED:
+        return _configurator_disabled_response(request, deal_id)
     if is_file_only_role(request.user):
         return HttpResponseForbidden('Not allowed')
     deal = get_object_or_404(Deal, pk=deal_id)
@@ -736,6 +1031,8 @@ def update_deal_cost_summary(request, deal_id):
 
 @login_required
 def cost_summary_page(request, deal_id):
+    if not CONFIGURATOR_ENABLED:
+        return _configurator_disabled_response(request, deal_id)
     if is_file_only_role(request.user):
         return HttpResponseForbidden('Not allowed')
     deal = get_object_or_404(Deal, pk=deal_id)
@@ -813,6 +1110,8 @@ def cost_summary_page(request, deal_id):
 @login_required
 @require_POST
 def recalc_configurator(request, deal_id):
+    if not CONFIGURATOR_ENABLED:
+        return _configurator_disabled_response(request, deal_id)
     if is_file_only_role(request.user):
         return HttpResponseForbidden('Not allowed')
     deal = get_object_or_404(Deal, pk=deal_id)
@@ -844,6 +1143,8 @@ def recalc_configurator(request, deal_id):
 @login_required
 @require_POST
 def save_configurator_draft(request, deal_id):
+    if not CONFIGURATOR_ENABLED:
+        return _configurator_disabled_response(request, deal_id)
     if is_file_only_role(request.user):
         return HttpResponseForbidden('Not allowed')
     deal = get_object_or_404(Deal, pk=deal_id)
@@ -959,6 +1260,8 @@ def _build_additional_options_context(deal, draft):
 
 @login_required
 def bathrooms_page(request, deal_id):
+    if not CONFIGURATOR_ENABLED:
+        return _configurator_disabled_response(request, deal_id)
     if is_file_only_role(request.user):
         return HttpResponseForbidden('Not allowed')
     deal = get_object_or_404(Deal, pk=deal_id)
@@ -995,6 +1298,8 @@ def bathrooms_page(request, deal_id):
 @login_required
 @require_POST
 def save_bathroom_tab(request, deal_id, bathroom_id):
+    if not CONFIGURATOR_ENABLED:
+        return _configurator_disabled_response(request, deal_id)
     if is_file_only_role(request.user):
         return HttpResponseForbidden('Not allowed')
     deal = get_object_or_404(Deal, pk=deal_id)
@@ -1040,6 +1345,8 @@ def save_bathroom_tab(request, deal_id, bathroom_id):
 
 @login_required
 def additional_options_page(request, deal_id):
+    if not CONFIGURATOR_ENABLED:
+        return _configurator_disabled_response(request, deal_id)
     if is_file_only_role(request.user):
         return HttpResponseForbidden('Not allowed')
     deal = get_object_or_404(Deal, pk=deal_id)
@@ -1053,6 +1360,8 @@ def additional_options_page(request, deal_id):
 @login_required
 @require_POST
 def save_additional_options(request, deal_id):
+    if not CONFIGURATOR_ENABLED:
+        return _configurator_disabled_response(request, deal_id)
     if is_file_only_role(request.user):
         return HttpResponseForbidden('Not allowed')
     deal = get_object_or_404(Deal, pk=deal_id)
@@ -1071,6 +1380,8 @@ def save_additional_options(request, deal_id):
 @login_required
 @require_POST
 def create_additional_option(request, deal_id):
+    if not CONFIGURATOR_ENABLED:
+        return _configurator_disabled_response(request, deal_id)
     if is_file_only_role(request.user):
         return HttpResponseForbidden('Not allowed')
     deal = get_object_or_404(Deal, pk=deal_id)
@@ -1099,6 +1410,80 @@ def create_additional_option(request, deal_id):
     ctx = _build_additional_options_context(deal, draft)
     ctx['create_form'] = form
     return render(request, 'deal_additional_options.html', ctx, status=400)
+
+
+# Параметры раздела «Электрика» — хранятся в draft.frozen_data['electrical'].
+_ELECTRICAL_FIELDS = [
+    ('input_power_kw', 'Вводная мощность, кВт', 'text'),
+    ('phases', 'Количество фаз (1 / 3)', 'text'),
+    ('input_type', 'Ввод (воздушный / кабельный, сечение СИП / кабеля)', 'text'),
+    ('panel_location', 'Место установки щита', 'text'),
+    ('panel_modules', 'Модулей в щите / резерв', 'text'),
+    ('sockets_count', 'Розеток, шт', 'text'),
+    ('switches_count', 'Выключателей, шт', 'text'),
+    ('light_points', 'Точек освещения, шт', 'text'),
+    ('lowcurrent', 'Слаботочка (интернет, ТВ, видеонаблюдение, домофон)', 'textarea'),
+    ('grounding', 'Заземление, УЗО, молниезащита', 'textarea'),
+    ('panel_scheme', 'Схема щита: группы, автоматы, номиналы', 'textarea'),
+    ('notes', 'Прочие заметки по электрике', 'textarea'),
+]
+
+
+@login_required
+def deal_electrical_page(request, deal_id):
+    """Страница по проекту для пункта согласования «Электрика»."""
+    if not CONFIGURATOR_ENABLED:
+        return _configurator_disabled_response(request, deal_id)
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    draft = _get_or_create_draft_version(deal, request.user)
+    stored = dict((draft.frozen_data or {}).get('electrical') or {})
+    fields = [
+        {'name': name, 'label': label, 'widget': widget, 'value': stored.get(name, '')}
+        for name, label, widget in _ELECTRICAL_FIELDS
+    ]
+    approval = deal.approvals.filter(slug='electrical').first()
+    return render(
+        request,
+        'deal_electrical.html',
+        {
+            'deal': deal,
+            'draft_version': draft,
+            'fields': fields,
+            'approval': approval,
+            'saved': request.GET.get('saved') == '1',
+            'updated_at': stored.get('updated_at'),
+            'updated_by': stored.get('updated_by'),
+        },
+    )
+
+
+@login_required
+@require_POST
+def save_deal_electrical(request, deal_id):
+    if not CONFIGURATOR_ENABLED:
+        return _configurator_disabled_response(request, deal_id)
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    draft = _get_or_create_draft_version(deal, request.user)
+    frozen = draft.frozen_data or {}
+    data = {name: (request.POST.get(name) or '').strip() for name, _label, _widget in _ELECTRICAL_FIELDS}
+    data['updated_at'] = timezone.now().isoformat()
+    data['updated_by'] = request.user.get_username()
+    frozen['electrical'] = data
+    draft.frozen_data = frozen
+    draft.save(update_fields=['frozen_data'])
+    record_domain_event(
+        actor=request.user,
+        event_type='deal.electrical_updated',
+        entity_model='Deal',
+        entity_id=deal.id,
+        payload={'deal_id': deal.id},
+        request=request,
+    )
+    return redirect(reverse('deal_electrical_page', kwargs={'deal_id': deal.id}) + '?saved=1')
 
 
 @login_required
@@ -1405,3 +1790,876 @@ def deal_client_message_upload(request, deal_id):
         request=request,
     )
     return redirect('deal_detail', pk=deal.id)
+
+
+# ---------------------------------------------------------------------------
+# Этап «Согласования»: чек-лист, версии, гейт этапа
+# ---------------------------------------------------------------------------
+
+def _render_approvals_block(request, deal):
+    return render(request, 'includes/deal_approvals_block.html', build_approvals_context(deal))
+
+
+@login_required
+@require_GET
+def deal_approvals(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    return _render_approvals_block(request, deal)
+
+
+@login_required
+@require_POST
+def update_deal_approval(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    ensure_deal_approvals(deal)
+    slug = (request.POST.get('slug') or '').strip()
+    approval = deal.approvals.filter(slug=slug).first()
+    if approval is None:
+        return HttpResponseBadRequest('Unknown approval')
+
+    new_status = (request.POST.get('status') or '').strip()
+    valid_statuses = {value for value, _ in DealApproval.Status.choices}
+    if new_status not in valid_statuses:
+        return HttpResponseBadRequest('Invalid status')
+
+    version = None
+    raw_version = (request.POST.get('project_version') or '').strip()
+    if raw_version.isdigit():
+        version = deal.versions.filter(pk=int(raw_version)).first()
+
+    old_status = approval.status
+    approval.status = new_status
+    approval.comment = (request.POST.get('comment') or '').strip()
+    approval.project_version = version
+    decided_statuses = {
+        DealApproval.Status.APPROVED,
+        DealApproval.Status.REJECTED,
+        DealApproval.Status.NOT_REQUIRED,
+    }
+    if new_status in decided_statuses:
+        approval.decided_by = request.user
+        approval.decided_at = timezone.now()
+    else:
+        approval.decided_by = None
+        approval.decided_at = None
+    approval.save()
+
+    if old_status != new_status:
+        ChangeLog.objects.create(
+            project_version=_ensure_latest_version_for_log(deal, request.user),
+            changed_by=request.user,
+            field_path=f'approval.{slug}',
+            old_value={'value': old_status},
+            new_value={'value': new_status},
+        )
+        record_domain_event(
+            actor=request.user,
+            event_type='deal.approval_changed',
+            entity_model='DealApproval',
+            entity_id=approval.id,
+            payload={'deal_id': deal.id, 'slug': slug, 'status': new_status},
+            request=request,
+        )
+    return _render_approvals_block(request, deal)
+
+
+@login_required
+@require_POST
+def manage_deal_approval(request, deal_id):
+    """Редактирование набора пунктов чек-листа: добавить/удалить/переключить обязательность."""
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    ensure_deal_approvals(deal)
+    action = (request.POST.get('action') or '').strip()
+
+    if action == 'add':
+        title = (request.POST.get('title') or '').strip()
+        if not title:
+            return HttpResponseBadRequest('Empty title')
+        base = slugify(title, allow_unicode=False) or 'item'
+        base = f'custom-{base}'[:40]
+        slug = base
+        taken = set(deal.approvals.values_list('slug', flat=True))
+        counter = 2
+        while slug in taken:
+            slug = f'{base}-{counter}'
+            counter += 1
+        last_order = deal.approvals.order_by('-sort_order').values_list('sort_order', flat=True).first() or 0
+        DealApproval.objects.create(
+            deal=deal,
+            slug=slug,
+            title=title[:200],
+            hint=(request.POST.get('hint') or '').strip()[:300],
+            is_required=request.POST.get('is_required') == 'on',
+            is_custom=True,
+            sort_order=last_order + 1,
+        )
+        record_domain_event(
+            actor=request.user,
+            event_type='deal.approval_item_added',
+            entity_model='DealApproval',
+            entity_id=deal.id,
+            payload={'deal_id': deal.id, 'slug': slug},
+            request=request,
+        )
+        return _render_approvals_block(request, deal)
+
+    slug = (request.POST.get('slug') or '').strip()
+    approval = deal.approvals.filter(slug=slug).first()
+    if approval is None:
+        return HttpResponseBadRequest('Unknown approval')
+
+    if action == 'remove':
+        if not approval.is_custom:
+            return HttpResponseBadRequest('Cannot remove template item')
+        approval.delete()
+        record_domain_event(
+            actor=request.user,
+            event_type='deal.approval_item_removed',
+            entity_model='DealApproval',
+            entity_id=deal.id,
+            payload={'deal_id': deal.id, 'slug': slug},
+            request=request,
+        )
+    elif action == 'toggle_required':
+        approval.is_required = not approval.is_required
+        approval.save(update_fields=['is_required', 'updated_at'])
+    else:
+        return HttpResponseBadRequest('Unknown action')
+
+    return _render_approvals_block(request, deal)
+
+
+# Связанные полноценные страницы CRM для отдельных пунктов чек-листа.
+_APPROVAL_RELATED_PAGES = {
+    'layout': [('Смета и конфигуратор', 'deal_cost_summary_page')],
+    'cost_quote': [('Смета и конфигуратор', 'deal_cost_summary_page')],
+    'bathrooms': [('Комплектация санузлов', 'deal_bathrooms_page')],
+    'additional_options': [('Дополнительные опции', 'deal_additional_options_page')],
+    'finishing': [('Смета и конфигуратор', 'deal_cost_summary_page')],
+    'electrical': [('Электрика — параметры проекта', 'deal_electrical_page')],
+}
+
+
+def _approval_related_links(deal, slug):
+    links = []
+    for label, url_name in _APPROVAL_RELATED_PAGES.get(slug, []):
+        links.append({'label': label, 'url': reverse(url_name, kwargs={'deal_id': deal.id})})
+    return links
+
+
+@login_required
+@require_GET
+def deal_approval_detail(request, deal_id, slug):
+    """Страница по проекту для одного пункта чек-листа согласований."""
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    ensure_deal_approvals(deal)
+    approval = (
+        deal.approvals.select_related('decided_by', 'project_version')
+        .filter(slug=slug)
+        .first()
+    )
+    if approval is None:
+        raise Http404('Unknown approval')
+    versions = list(deal.versions.order_by('-version_number'))
+    history = (
+        ChangeLog.objects.filter(project_version__deal=deal, field_path=f'approval.{slug}')
+        .select_related('changed_by')
+        .order_by('-changed_at')[:50]
+    )
+    attachments = list(
+        approval.files.filter(is_archived=False)
+        .select_related('uploaded_by')
+        .order_by('-created_at')
+    )
+    return render(
+        request,
+        'deal_approval_detail.html',
+        {
+            'deal': deal,
+            'approval': approval,
+            'versions': versions,
+            'approval_status_choices': DealApproval.Status.choices,
+            'history': history,
+            'related_links': _approval_related_links(deal, slug),
+            'attachments': attachments,
+            'file_error': request.GET.get('file_error') == '1',
+            'saved': request.GET.get('saved') == '1',
+        },
+    )
+
+
+@login_required
+@require_POST
+def save_deal_approval_detail(request, deal_id, slug):
+    """Сохранение статуса, версии, комментария и рабочих заметок пункта чек-листа."""
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    ensure_deal_approvals(deal)
+    approval = deal.approvals.filter(slug=slug).first()
+    if approval is None:
+        raise Http404('Unknown approval')
+
+    new_status = (request.POST.get('status') or '').strip()
+    valid_statuses = {value for value, _ in DealApproval.Status.choices}
+    if new_status not in valid_statuses:
+        return HttpResponseBadRequest('Invalid status')
+
+    version = None
+    raw_version = (request.POST.get('project_version') or '').strip()
+    if raw_version.isdigit():
+        version = deal.versions.filter(pk=int(raw_version)).first()
+
+    old_status = approval.status
+    approval.status = new_status
+    approval.comment = (request.POST.get('comment') or '').strip()
+    approval.notes = (request.POST.get('notes') or '').strip()
+    approval.project_version = version
+    decided_statuses = {
+        DealApproval.Status.APPROVED,
+        DealApproval.Status.REJECTED,
+        DealApproval.Status.NOT_REQUIRED,
+    }
+    if new_status in decided_statuses:
+        approval.decided_by = request.user
+        approval.decided_at = timezone.now()
+    else:
+        approval.decided_by = None
+        approval.decided_at = None
+    approval.save()
+
+    if old_status != new_status:
+        ChangeLog.objects.create(
+            project_version=_ensure_latest_version_for_log(deal, request.user),
+            changed_by=request.user,
+            field_path=f'approval.{slug}',
+            old_value={'value': old_status},
+            new_value={'value': new_status},
+        )
+        record_domain_event(
+            actor=request.user,
+            event_type='deal.approval_changed',
+            entity_model='DealApproval',
+            entity_id=approval.id,
+            payload={'deal_id': deal.id, 'slug': slug, 'status': new_status},
+            request=request,
+        )
+    return redirect(
+        reverse('deal_approval_detail', kwargs={'deal_id': deal.id, 'slug': slug}) + '?saved=1'
+    )
+
+
+def _approval_detail_redirect(deal_id, slug, query=''):
+    return redirect(
+        reverse('deal_approval_detail', kwargs={'deal_id': deal_id, 'slug': slug}) + query
+    )
+
+
+@login_required
+@require_POST
+def upload_deal_approval_file(request, deal_id, slug):
+    """Прикрепить файл-основание (PDF и др.) к пункту чек-листа согласований."""
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    ensure_deal_approvals(deal)
+    approval = deal.approvals.filter(slug=slug).first()
+    if approval is None:
+        raise Http404('Unknown approval')
+
+    uploaded = request.FILES.get('upload')
+    if uploaded is None:
+        return _approval_detail_redirect(deal.id, slug, '?file_error=1')
+
+    ensure_deal_dirs(deal)
+    category = _detect_category(uploaded.name)
+    original_name = _normalize_upload_name(uploaded.name)
+    ext = Path(original_name).suffix.lower().lstrip('.')
+    stamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    relative_dir = Path('approvals') / slug
+    filename = f'{stamp}_{original_name}'
+    relative_path = get_deal_root(deal).joinpath(relative_dir, filename).relative_to(get_files_root())
+    absolute_path = get_files_root() / relative_path
+    absolute_path.parent.mkdir(parents=True, exist_ok=True)
+    with absolute_path.open('wb+') as destination:
+        for chunk in uploaded.chunks():
+            destination.write(chunk)
+
+    created_file = ProjectFile.objects.create(
+        deal=deal,
+        approval=approval,
+        project_version=approval.project_version,
+        source=ProjectFile.Source.SYSTEM,
+        category=category,
+        relative_path=str(relative_path).replace('\\', '/'),
+        original_name=original_name,
+        size_bytes=uploaded.size,
+        mime_type=mimetypes.guess_type(original_name)[0] or '',
+        ext=ext,
+        uploaded_by=request.user,
+    )
+    _log_file_event(deal, request.user, 'upload', created_file, {'approval': slug, 'size_bytes': uploaded.size})
+    record_domain_event(
+        actor=request.user,
+        event_type='deal.approval_file_added',
+        entity_model='DealApproval',
+        entity_id=approval.id,
+        payload={'deal_id': deal.id, 'slug': slug, 'file_id': created_file.id, 'name': original_name},
+        request=request,
+    )
+    return _approval_detail_redirect(deal.id, slug, '?saved=1')
+
+
+@login_required
+@xframe_options_sameorigin
+@require_GET
+def open_deal_approval_file(request, deal_id, file_id):
+    """Отдать файл-основание пункта чек-листа для просмотра в браузере."""
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    file_obj = get_object_or_404(
+        ProjectFile, pk=file_id, deal_id=deal_id, is_archived=False
+    )
+    if file_obj.approval_id is None:
+        raise Http404('Not an approval file')
+    absolute_path = file_obj.absolute_path
+    if not absolute_path.exists() or not absolute_path.is_file():
+        raise Http404('File not found')
+    return FileResponse(absolute_path.open('rb'), as_attachment=False, filename=file_obj.original_name)
+
+
+@login_required
+@require_POST
+def delete_deal_approval_file(request, deal_id, slug, file_id):
+    """Убрать файл-основание из пункта чек-листа (в архив)."""
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    file_obj = get_object_or_404(
+        ProjectFile, pk=file_id, deal=deal, is_archived=False
+    )
+    file_name = file_obj.original_name
+    _archive_file(file_obj, request.user)
+    _log_file_event(
+        deal,
+        request.user,
+        'archive',
+        None,
+        {'file_id': file_id, 'file_name': file_name, 'approval': slug},
+    )
+    return _approval_detail_redirect(deal.id, slug, '?saved=1')
+
+
+@login_required
+@require_POST
+def update_project_version_status(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    raw_version = (request.POST.get('version_id') or '').strip()
+    action = (request.POST.get('action') or '').strip()
+    if not raw_version.isdigit():
+        return HttpResponseBadRequest('Invalid version')
+    version = get_object_or_404(ProjectVersion, pk=int(raw_version), deal=deal)
+
+    now = timezone.now()
+    if action == 'send_to_client':
+        version.status = ProjectVersion.Status.SENT_TO_CLIENT
+        if version.quote_sent_at is None:
+            version.quote_sent_at = now
+        version.save(update_fields=['status', 'quote_sent_at'])
+    elif action == 'client_accepted':
+        (
+            deal.versions.filter(status=ProjectVersion.Status.ACCEPTED)
+            .exclude(pk=version.pk)
+            .update(status=ProjectVersion.Status.SUPERSEDED)
+        )
+        version.status = ProjectVersion.Status.ACCEPTED
+        version.save(update_fields=['status'])
+    elif action == 'back_to_draft':
+        version.status = ProjectVersion.Status.DRAFT
+        version.save(update_fields=['status'])
+    else:
+        return HttpResponseBadRequest('Unknown action')
+
+    ChangeLog.objects.create(
+        project_version=version,
+        changed_by=request.user,
+        field_path='version.status',
+        old_value=None,
+        new_value={'value': version.status},
+    )
+    record_domain_event(
+        actor=request.user,
+        event_type='project_version.status_changed',
+        entity_model='ProjectVersion',
+        entity_id=version.id,
+        payload={'deal_id': deal.id, 'status': version.status, 'action': action},
+        request=request,
+    )
+    return _render_approvals_block(request, deal)
+
+
+@login_required
+@require_POST
+def pass_approvals_stage(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    action = (request.POST.get('action') or 'pass').strip()
+    items = ensure_deal_approvals(deal)
+    gate = approvals_gate(items)
+    accepted_version = (
+        deal.versions.filter(status=ProjectVersion.Status.ACCEPTED)
+        .order_by('-version_number')
+        .first()
+    )
+
+    if action == 'reopen':
+        if deal.approvals_passed_at is not None:
+            deal.approvals_passed_at = None
+            deal.save(update_fields=['approvals_passed_at', 'updated_at'])
+            record_domain_event(
+                actor=request.user,
+                event_type='deal.approvals_reopened',
+                entity_model='Deal',
+                entity_id=deal.id,
+                payload={'deal_id': deal.id},
+                request=request,
+            )
+        return _render_approvals_block(request, deal)
+
+    if not gate['passed'] or accepted_version is None:
+        return HttpResponseBadRequest('Gate not passed')
+
+    deal.approvals_passed_at = timezone.now()
+    deal.save(update_fields=['approvals_passed_at', 'updated_at'])
+    ChangeLog.objects.create(
+        project_version=accepted_version,
+        changed_by=request.user,
+        field_path='approvals_passed_at',
+        old_value=None,
+        new_value={'value': deal.approvals_passed_at.isoformat()},
+    )
+    record_domain_event(
+        actor=request.user,
+        event_type='deal.approvals_passed',
+        entity_model='Deal',
+        entity_id=deal.id,
+        payload={
+            'deal_id': deal.id,
+            'accepted_version': accepted_version.version_number,
+        },
+        request=request,
+    )
+    return _render_approvals_block(request, deal)
+
+
+# ---------------------------------------------------------------------------
+# Этап «Проектирование»: чек-лист разделов рабочей документации, гейт этапа
+# ---------------------------------------------------------------------------
+
+def _render_design_block(request, deal):
+    return render(request, 'includes/deal_design_block.html', build_design_context(deal))
+
+
+_DESIGN_DECIDED_STATUSES = {
+    DealDesignSection.Status.RELEASED,
+    DealDesignSection.Status.ON_HOLD,
+    DealDesignSection.Status.NOT_REQUIRED,
+}
+
+
+@login_required
+@require_GET
+def deal_design(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    return _render_design_block(request, deal)
+
+
+@login_required
+@require_POST
+def update_deal_design_section(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    ensure_deal_design_sections(deal)
+    slug = (request.POST.get('slug') or '').strip()
+    section = deal.design_sections.filter(slug=slug).first()
+    if section is None:
+        return HttpResponseBadRequest('Unknown design section')
+
+    new_status = (request.POST.get('status') or '').strip()
+    valid_statuses = {value for value, _ in DealDesignSection.Status.choices}
+    if new_status not in valid_statuses:
+        return HttpResponseBadRequest('Invalid status')
+
+    version = None
+    raw_version = (request.POST.get('project_version') or '').strip()
+    if raw_version.isdigit():
+        version = deal.versions.filter(pk=int(raw_version)).first()
+
+    old_status = section.status
+    section.status = new_status
+    section.comment = (request.POST.get('comment') or '').strip()
+    section.project_version = version
+    if new_status in _DESIGN_DECIDED_STATUSES:
+        section.decided_by = request.user
+        section.decided_at = timezone.now()
+    else:
+        section.decided_by = None
+        section.decided_at = None
+    section.save()
+
+    if old_status != new_status:
+        ChangeLog.objects.create(
+            project_version=_ensure_latest_version_for_log(deal, request.user),
+            changed_by=request.user,
+            field_path=f'design.{slug}',
+            old_value={'value': old_status},
+            new_value={'value': new_status},
+        )
+        record_domain_event(
+            actor=request.user,
+            event_type='deal.design_section_changed',
+            entity_model='DealDesignSection',
+            entity_id=section.id,
+            payload={'deal_id': deal.id, 'slug': slug, 'status': new_status},
+            request=request,
+        )
+    return _render_design_block(request, deal)
+
+
+@login_required
+@require_POST
+def manage_deal_design_section(request, deal_id):
+    """Добавить/удалить свой раздел или переключить обязательность."""
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    ensure_deal_design_sections(deal)
+    action = (request.POST.get('action') or '').strip()
+
+    if action == 'add':
+        title = (request.POST.get('title') or '').strip()
+        if not title:
+            return HttpResponseBadRequest('Empty title')
+        base = slugify(title, allow_unicode=False) or 'section'
+        base = f'custom-{base}'[:40]
+        slug = base
+        taken = set(deal.design_sections.values_list('slug', flat=True))
+        counter = 2
+        while slug in taken:
+            slug = f'{base}-{counter}'
+            counter += 1
+        last_order = deal.design_sections.order_by('-sort_order').values_list('sort_order', flat=True).first() or 0
+        DealDesignSection.objects.create(
+            deal=deal,
+            slug=slug,
+            title=title[:200],
+            hint=(request.POST.get('hint') or '').strip()[:300],
+            is_required=request.POST.get('is_required') == 'on',
+            is_custom=True,
+            sort_order=last_order + 1,
+        )
+        record_domain_event(
+            actor=request.user,
+            event_type='deal.design_section_added',
+            entity_model='DealDesignSection',
+            entity_id=deal.id,
+            payload={'deal_id': deal.id, 'slug': slug},
+            request=request,
+        )
+        return _render_design_block(request, deal)
+
+    slug = (request.POST.get('slug') or '').strip()
+    section = deal.design_sections.filter(slug=slug).first()
+    if section is None:
+        return HttpResponseBadRequest('Unknown design section')
+
+    if action == 'remove':
+        if not section.is_custom:
+            return HttpResponseBadRequest('Cannot remove template section')
+        section.delete()
+        record_domain_event(
+            actor=request.user,
+            event_type='deal.design_section_removed',
+            entity_model='DealDesignSection',
+            entity_id=deal.id,
+            payload={'deal_id': deal.id, 'slug': slug},
+            request=request,
+        )
+    elif action == 'toggle_required':
+        section.is_required = not section.is_required
+        section.save(update_fields=['is_required', 'updated_at'])
+    else:
+        return HttpResponseBadRequest('Unknown action')
+
+    return _render_design_block(request, deal)
+
+
+_DESIGN_RELATED_PAGES = {
+    'layout': [('Смета и конфигуратор', 'deal_cost_summary_page')],
+    'openings': [('Смета и конфигуратор', 'deal_cost_summary_page')],
+    'finishing': [('Смета и конфигуратор', 'deal_cost_summary_page')],
+    'spec': [('Смета и конфигуратор', 'deal_cost_summary_page')],
+    'electrical': [('Электрика — параметры проекта', 'deal_electrical_page')],
+    'plumbing': [('Комплектация санузлов', 'deal_bathrooms_page')],
+}
+
+
+def _design_related_links(deal, slug):
+    links = []
+    for label, url_name in _DESIGN_RELATED_PAGES.get(slug, []):
+        links.append({'label': label, 'url': reverse(url_name, kwargs={'deal_id': deal.id})})
+    return links
+
+
+@login_required
+@require_GET
+def deal_design_section_detail(request, deal_id, slug):
+    """Страница по проекту для одного раздела рабочей документации."""
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    ensure_deal_design_sections(deal)
+    section = (
+        deal.design_sections.select_related('decided_by', 'project_version')
+        .filter(slug=slug)
+        .first()
+    )
+    if section is None:
+        raise Http404('Unknown design section')
+    versions = list(deal.versions.order_by('-version_number'))
+    history = (
+        ChangeLog.objects.filter(project_version__deal=deal, field_path=f'design.{slug}')
+        .select_related('changed_by')
+        .order_by('-changed_at')[:50]
+    )
+    attachments = list(
+        section.files.filter(is_archived=False)
+        .select_related('uploaded_by')
+        .order_by('-created_at')
+    )
+    return render(
+        request,
+        'deal_design_section_detail.html',
+        {
+            'deal': deal,
+            'section': section,
+            'versions': versions,
+            'design_status_choices': DealDesignSection.Status.choices,
+            'history': history,
+            'related_links': _design_related_links(deal, slug),
+            'attachments': attachments,
+            'file_error': request.GET.get('file_error') == '1',
+            'saved': request.GET.get('saved') == '1',
+        },
+    )
+
+
+@login_required
+@require_POST
+def save_deal_design_section_detail(request, deal_id, slug):
+    """Сохранение статуса, версии, комментария и рабочих заметок раздела."""
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    ensure_deal_design_sections(deal)
+    section = deal.design_sections.filter(slug=slug).first()
+    if section is None:
+        raise Http404('Unknown design section')
+
+    new_status = (request.POST.get('status') or '').strip()
+    valid_statuses = {value for value, _ in DealDesignSection.Status.choices}
+    if new_status not in valid_statuses:
+        return HttpResponseBadRequest('Invalid status')
+
+    version = None
+    raw_version = (request.POST.get('project_version') or '').strip()
+    if raw_version.isdigit():
+        version = deal.versions.filter(pk=int(raw_version)).first()
+
+    old_status = section.status
+    section.status = new_status
+    section.comment = (request.POST.get('comment') or '').strip()
+    section.notes = (request.POST.get('notes') or '').strip()
+    section.project_version = version
+    if new_status in _DESIGN_DECIDED_STATUSES:
+        section.decided_by = request.user
+        section.decided_at = timezone.now()
+    else:
+        section.decided_by = None
+        section.decided_at = None
+    section.save()
+
+    if old_status != new_status:
+        ChangeLog.objects.create(
+            project_version=_ensure_latest_version_for_log(deal, request.user),
+            changed_by=request.user,
+            field_path=f'design.{slug}',
+            old_value={'value': old_status},
+            new_value={'value': new_status},
+        )
+        record_domain_event(
+            actor=request.user,
+            event_type='deal.design_section_changed',
+            entity_model='DealDesignSection',
+            entity_id=section.id,
+            payload={'deal_id': deal.id, 'slug': slug, 'status': new_status},
+            request=request,
+        )
+    return redirect(
+        reverse('deal_design_section_detail', kwargs={'deal_id': deal.id, 'slug': slug}) + '?saved=1'
+    )
+
+
+def _design_detail_redirect(deal_id, slug, query=''):
+    return redirect(
+        reverse('deal_design_section_detail', kwargs={'deal_id': deal_id, 'slug': slug}) + query
+    )
+
+
+@login_required
+@require_POST
+def upload_deal_design_file(request, deal_id, slug):
+    """Прикрепить файл (чертёж PDF и др.) к разделу рабочей документации."""
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    ensure_deal_design_sections(deal)
+    section = deal.design_sections.filter(slug=slug).first()
+    if section is None:
+        raise Http404('Unknown design section')
+
+    uploaded = request.FILES.get('upload')
+    if uploaded is None:
+        return _design_detail_redirect(deal.id, slug, '?file_error=1')
+
+    ensure_deal_dirs(deal)
+    category = _detect_category(uploaded.name)
+    original_name = _normalize_upload_name(uploaded.name)
+    ext = Path(original_name).suffix.lower().lstrip('.')
+    stamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    relative_dir = Path('design') / slug
+    filename = f'{stamp}_{original_name}'
+    relative_path = get_deal_root(deal).joinpath(relative_dir, filename).relative_to(get_files_root())
+    absolute_path = get_files_root() / relative_path
+    absolute_path.parent.mkdir(parents=True, exist_ok=True)
+    with absolute_path.open('wb+') as destination:
+        for chunk in uploaded.chunks():
+            destination.write(chunk)
+
+    created_file = ProjectFile.objects.create(
+        deal=deal,
+        design_section=section,
+        project_version=section.project_version,
+        source=ProjectFile.Source.SYSTEM,
+        category=category,
+        relative_path=str(relative_path).replace('\\', '/'),
+        original_name=original_name,
+        size_bytes=uploaded.size,
+        mime_type=mimetypes.guess_type(original_name)[0] or '',
+        ext=ext,
+        uploaded_by=request.user,
+    )
+    _log_file_event(deal, request.user, 'upload', created_file, {'design_section': slug, 'size_bytes': uploaded.size})
+    record_domain_event(
+        actor=request.user,
+        event_type='deal.design_file_added',
+        entity_model='DealDesignSection',
+        entity_id=section.id,
+        payload={'deal_id': deal.id, 'slug': slug, 'file_id': created_file.id, 'name': original_name},
+        request=request,
+    )
+    return _design_detail_redirect(deal.id, slug, '?saved=1')
+
+
+@login_required
+@xframe_options_sameorigin
+@require_GET
+def open_deal_design_file(request, deal_id, file_id):
+    """Отдать файл раздела рабочей документации для просмотра в браузере."""
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    file_obj = get_object_or_404(
+        ProjectFile, pk=file_id, deal_id=deal_id, is_archived=False
+    )
+    if file_obj.design_section_id is None:
+        raise Http404('Not a design file')
+    absolute_path = file_obj.absolute_path
+    if not absolute_path.exists() or not absolute_path.is_file():
+        raise Http404('File not found')
+    return FileResponse(absolute_path.open('rb'), as_attachment=False, filename=file_obj.original_name)
+
+
+@login_required
+@require_POST
+def delete_deal_design_file(request, deal_id, slug, file_id):
+    """Убрать файл из раздела рабочей документации (в архив)."""
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    file_obj = get_object_or_404(
+        ProjectFile, pk=file_id, deal=deal, is_archived=False
+    )
+    file_name = file_obj.original_name
+    _archive_file(file_obj, request.user)
+    _log_file_event(
+        deal,
+        request.user,
+        'archive',
+        None,
+        {'file_id': file_id, 'file_name': file_name, 'design_section': slug},
+    )
+    return _design_detail_redirect(deal.id, slug, '?saved=1')
+
+
+@login_required
+@require_POST
+def pass_design_stage(request, deal_id):
+    if is_file_only_role(request.user):
+        return HttpResponseForbidden('Not allowed')
+    deal = get_object_or_404(Deal, pk=deal_id)
+    action = (request.POST.get('action') or 'pass').strip()
+    items = ensure_deal_design_sections(deal)
+    gate = design_gate(items)
+
+    if action == 'reopen':
+        if deal.design_passed_at is not None:
+            deal.design_passed_at = None
+            deal.save(update_fields=['design_passed_at', 'updated_at'])
+            record_domain_event(
+                actor=request.user,
+                event_type='deal.design_reopened',
+                entity_model='Deal',
+                entity_id=deal.id,
+                payload={'deal_id': deal.id},
+                request=request,
+            )
+        return _render_design_block(request, deal)
+
+    if not gate['passed']:
+        return HttpResponseBadRequest('Gate not passed')
+
+    deal.design_passed_at = timezone.now()
+    deal.save(update_fields=['design_passed_at', 'updated_at'])
+    record_domain_event(
+        actor=request.user,
+        event_type='deal.design_passed',
+        entity_model='Deal',
+        entity_id=deal.id,
+        payload={'deal_id': deal.id},
+        request=request,
+    )
+    return _render_design_block(request, deal)

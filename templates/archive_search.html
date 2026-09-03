@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-3">
+        <div>
+            <h1 class="h3 mb-1">Архив планировок</h1>
+            <p class="text-muted mb-0 small">Поиск по объекту, фамилии или коду (например 6МД Ирина Раздолье). Сложные вопросы — в чате умника.</p>
+        </div>
+    </div>
+
+    <form class="row g-2 mb-4" method="get" action="{% url 'archive_search' %}">
+        <div class="col-md-8 col-lg-6">
+            <input
+                class="form-control"
+                type="search"
+                name="q"
+                value="{{ query }}"
+                placeholder="Ирина Раздолье, 6МД, Васкелово…"
+                autofocus
+            >
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-primary" type="submit">Найти</button>
+        </div>
+    </form>
+
+    {% if not query %}
+        <p class="text-muted">Введите запрос. PDF лежат в D:\Общая_Рабочая, индекс умника — внутри CRM (папка umnik).</p>
+    {% elif archive.error == 'not_configured' %}
+        <p class="text-muted">Умник не подключён. В `.env` задайте `UMNIK_URL`.</p>
+    {% elif archive.error %}
+        <p class="text-muted">Архив сейчас недоступен. Карточка сделки работает как обычно. Запустите start.bat — он поднимает умника на :7861.</p>
+    {% elif archive.layouts %}
+        <div class="card">
+            <div class="card-header py-2">Найдено: {{ archive.layouts|length }}</div>
+            <div class="card-body py-2">
+                {% for layout in archive.layouts %}
+                    <div class="{% if not forloop.last %}mb-3 pb-3 border-bottom{% endif %}">
+                        <div class="fw-semibold">
+                            {% if layout.object %}{{ layout.object }}{% else %}{{ layout.name }}{% endif %}
+                            {% if layout.version %} {{ layout.version }}{% endif %}
+                            {% if layout.title %}<span class="text-muted fw-normal"> — {{ layout.title }}</span>{% endif %}
+                        </div>
+                        <div class="small">
+                            {% if layout.area_total %}
+                                Площадь: <strong>{{ layout.area_total }} м²</strong>
+                                {% if layout.area_living and layout.area_living != layout.area_total %}
+                                    <span class="text-muted">(жилая {{ layout.area_living }} м²)</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-muted">Площадь в таблицах не размечена</span>
+                            {% endif %}
+                        </div>
+                        {% if layout.room_counts %}
+                            <div class="small text-muted">
+                                Состав:
+                                {% for kind, count in layout.room_counts.items %}
+                                    {{ kind }} {{ count }}{% if not forloop.last %}, {% endif %}
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        {% if layout.rooms %}
+                            <div class="small mt-1">
+                                {% for room in layout.rooms %}
+                                    {{ room.name }}{% if room.area_m2 %} {{ room.area_m2 }} м²{% endif %}{% if not forloop.last %}; {% endif %}
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        {% if layout.path %}
+                            <div class="small text-muted text-break mt-1">{{ layout.path }}</div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% else %}
+        <p class="text-muted mb-0">В архиве нет таблиц планировок по запросу «{{ query }}».</p>
+    {% endif %}
+{% endblock %}

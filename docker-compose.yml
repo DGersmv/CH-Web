@@ -33,6 +33,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: chcrm_app:latest
     restart: unless-stopped
     container_name: chcrm_app
     working_dir: /app
@@ -51,13 +52,49 @@ services:
       - python manage.py migrate --noinput && python manage.py collectstatic --noinput && if [ "$${DJANGO_SEED_DEMO_DATA}" = "1" ] || [ "$${DJANGO_SEED_DEMO_DATA}" = "true" ] || [ "$${DJANGO_SEED_DEMO_DATA}" = "True" ]; then python manage.py seed_demo_data; fi && exec daphne -b 0.0.0.0 -p 8000 core.asgi:application
     volumes:
       - .:/app
+      # Источники для «вложить файл с сервера» в Общий чат (только чтение).
+      - "D:/Общая_Рабочая:/mnt/rabochaya:ro"
+      - "./umnik:/mnt/scan_pdf:ro"
     ports:
       - "8001:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  telegram_bot:
+    image: chcrm_app:latest
+    restart: unless-stopped
+    container_name: chcrm_telegram_bot
+    working_dir: /app
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      DJANGO_COLLECTSTATIC: "0"
+      DJANGO_RUN_MIGRATIONS: "0"
+    command:
+      - sh
+      - -c
+      - exec python manage.py run_telegram_bot
+    volumes:
+      - .:/app
+      - "D:/Общая_Рабочая:/mnt/rabochaya:ro"
+      - "./umnik:/mnt/scan_pdf:ro"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      app:
+        condition: service_started
 
 volumes:
   postgres_data:

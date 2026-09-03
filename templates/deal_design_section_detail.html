@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb small">
+            <li class="breadcrumb-item"><a href="{% url 'deal_detail' deal.id %}">{{ deal.project_code }}</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'deal_detail' deal.id %}#stage-design">Проектирование</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ section.title }}</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+            <h1 class="mb-1">{{ section.title }}</h1>
+            {% if section.hint %}<div class="text-muted">{{ section.hint }}</div>{% endif %}
+        </div>
+        <a href="{% url 'deal_detail' deal.id %}#stage-design" class="btn btn-outline-secondary">← К разделам</a>
+    </div>
+
+    {% if saved %}
+        <div class="alert alert-success py-2">Сохранено.</div>
+    {% endif %}
+
+    <div class="row g-3">
+        <div class="col-lg-7">
+            <div class="card mb-3">
+                <div class="card-header">Статус раздела</div>
+                <div class="card-body">
+                    <form method="post" action="{% url 'deal_design_section_detail_save' deal.id section.slug %}">
+                        {% csrf_token %}
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label">Статус</label>
+                                <select name="status" class="form-select">
+                                    {% for value, label in design_status_choices %}
+                                        <option value="{{ value }}" {% if value == section.status %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Версия проекта</label>
+                                <select name="project_version" class="form-select">
+                                    <option value="">— не привязана —</option>
+                                    {% for v in versions %}
+                                        <option value="{{ v.id }}" {% if section.project_version_id == v.id %}selected{% endif %}>
+                                            v{{ v.version_number }} · {{ v.get_status_display }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Комментарий / имя файла</label>
+                                <input type="text" name="comment" value="{{ section.comment }}" class="form-control"
+                                       placeholder="номер листа, имя DWG/PDF, суть">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Рабочие заметки по разделу</label>
+                                <textarea name="notes" rows="8" class="form-control"
+                                          placeholder="Что осталось сделать, открытые вопросы, договорённости">{{ section.notes }}</textarea>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary mt-3">Сохранить</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Файлы раздела</span>
+                    <span class="badge text-bg-light">{{ attachments|length }}</span>
+                </div>
+                <div class="card-body">
+                    {% if file_error %}
+                        <div class="alert alert-danger py-2">Файл не выбран.</div>
+                    {% endif %}
+                    <form method="post" enctype="multipart/form-data"
+                          action="{% url 'deal_design_file_upload' deal.id section.slug %}"
+                          class="d-flex gap-2 align-items-center mb-3">
+                        {% csrf_token %}
+                        <input type="file" name="upload" accept=".pdf,application/pdf,image/*"
+                               class="form-control form-control-sm" required>
+                        <button type="submit" class="btn btn-sm btn-primary flex-shrink-0">Прикрепить</button>
+                    </form>
+
+                    {% for f in attachments %}
+                        <div class="border rounded mb-3">
+                            <div class="d-flex justify-content-between align-items-center px-2 py-1 bg-light-subtle">
+                                <span class="small fw-semibold text-truncate" title="{{ f.original_name }}">{{ f.original_name }}</span>
+                                <span class="d-flex gap-1 flex-shrink-0">
+                                    <a class="btn btn-sm btn-outline-secondary py-0"
+                                       href="{% url 'deal_design_file_open' deal.id f.id %}" target="_blank">Открыть</a>
+                                    <form method="post" class="d-inline"
+                                          action="{% url 'deal_design_file_delete' deal.id section.slug f.id %}"
+                                          onsubmit="return confirm('Убрать файл «{{ f.original_name|escapejs }}»?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-danger py-0">Убрать</button>
+                                    </form>
+                                </span>
+                            </div>
+                            {% if f.category == 'pdf' %}
+                                <iframe src="{% url 'deal_design_file_open' deal.id f.id %}#view=FitH"
+                                        title="{{ f.original_name }}"
+                                        style="width:100%; height:600px; border:0;"></iframe>
+                            {% elif f.category == 'photo' %}
+                                <img src="{% url 'deal_design_file_open' deal.id f.id %}" alt="{{ f.original_name }}"
+                                     style="max-width:100%; display:block;">
+                            {% else %}
+                                <div class="p-3 text-muted small">Предпросмотр недоступен — откройте файл в новой вкладке.</div>
+                            {% endif %}
+                            <div class="px-2 py-1 small text-muted">
+                                {{ f.created_at|date:"d.m.Y H:i" }} · {{ f.uploaded_by.username|default:"—" }}
+                            </div>
+                        </div>
+                    {% empty %}
+                        <div class="text-muted small">Файлов пока нет.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="card mb-3">
+                <div class="card-body py-2 small">
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted">Обязательность</span>
+                        <span>{% if section.is_required %}обязательный{% else %}необязательный{% endif %}</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted">Кто выпустил</span>
+                        <span>{{ section.decided_by.username|default:"—" }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted">Дата решения</span>
+                        <span>{% if section.decided_at %}{{ section.decided_at|date:"d.m.Y H:i" }}{% else %}—{% endif %}</span>
+                    </div>
+                </div>
+            </div>
+
+            {% if related_links %}
+                <div class="card mb-3">
+                    <div class="card-header">Связанные разделы проекта</div>
+                    <ul class="list-group list-group-flush">
+                        {% for link in related_links %}
+                            <li class="list-group-item py-2">
+                                <a href="{{ link.url }}">{{ link.label }}</a>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+
+            <div class="card">
+                <div class="card-header">История статуса</div>
+                <ul class="list-group list-group-flush">
+                    {% for row in history %}
+                        <li class="list-group-item py-2 small">
+                            <div class="text-muted">{{ row.changed_at|date:"d.m.Y H:i" }} · {{ row.changed_by.username|default:"—" }}</div>
+                            <div>{{ row.old_value.value|default:"—" }} → <strong>{{ row.new_value.value|default:"—" }}</strong></div>
+                        </li>
+                    {% empty %}
+                        <li class="list-group-item text-muted small">Изменений статуса ещё не было.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+{% endblock %}

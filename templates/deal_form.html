@@ -40,18 +40,11 @@
                         <div class="text-danger small">{{ form.project_code.errors|join:", " }}</div>
                     {% endif %}
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-8">
                     <label class="form-label" for="{{ form.client.id_for_label }}">Клиент</label>
                     {{ form.client }}
                     {% if form.client.errors %}
                         <div class="text-danger small">{{ form.client.errors|join:", " }}</div>
-                    {% endif %}
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label" for="{{ form.assigned_manager.id_for_label }}">Менеджер</label>
-                    {{ form.assigned_manager }}
-                    {% if form.assigned_manager.errors %}
-                        <div class="text-danger small">{{ form.assigned_manager.errors|join:", " }}</div>
                     {% endif %}
                 </div>
                 <div class="col-12">

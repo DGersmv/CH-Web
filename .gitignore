@@ -46,3 +46,10 @@ Thumbs.db
 
 # Local backups
 backups/
+
+# Умник (индекс, секреты, venv — не в git)
+umnik/.venv/
+umnik/.env
+umnik/data/
+umnik/**/__pycache__/
+umnik/.chroma/

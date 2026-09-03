@@ -1,217 +1,254 @@
 {% extends "base.html" %}
 
 {% block content %}
-    <div class="d-flex justify-content-between align-items-start mb-4">
-        <div>
-            <h1 class="mb-1">{{ deal.project_code }}</h1>
-            <div class="text-muted">
-                {% if is_file_only_role %}
-                    <span class="me-3">Статус: {{ deal.get_status_display }}</span>
-                    <span class="me-3">Модулей: {{ deal.module_count }}</span>
-                {% else %}
-                    <span class="me-3 d-inline-flex align-items-center gap-2">
-                        Статус:
-                        {% include "includes/deal_status_block.html" with deal=deal status_choices=status_choices %}
-                    </span>
-                    <span class="me-3 d-inline-flex align-items-center gap-2">
-                        Модулей:
-                        {% include "includes/deal_module_block.html" with deal=deal %}
-                    </span>
-                    <span class="me-3 d-inline-flex align-items-center gap-2">
-                        Менеджер:
-                        {% include "includes/deal_manager_block.html" with deal=deal manager_choices=manager_choices %}
-                    </span>
-                    <span class="d-inline-flex align-items-center gap-2">
-                        Наценка:
-                        {% include "includes/deal_margin_block.html" with deal=deal %}
-                    </span>
-                {% endif %}
-            </div>
-        </div>
+    <div class="d-flex justify-content-between align-items-start mb-2">
+        <h1 class="mb-0">{{ deal.project_code }}</h1>
         <a href="{% url 'deals' %}" class="btn btn-outline-secondary btn-sm">К списку сделок</a>
     </div>
 
-    <div class="row g-3">
-        <div class="col-lg-6">
-            <div class="d-flex flex-column gap-3">
-                <div class="card">
-                    <div class="card-header py-2">Клиент</div>
-                    <div class="card-body py-2">
-                        {% if deal.client %}
-                            <p class="mb-1"><strong>{{ deal.client.full_name }}</strong></p>
-                            <p class="mb-1">Телефон: {{ deal.client.phone|default:"—" }}</p>
-                            <p class="mb-0">Email: {{ deal.client.email|default:"—" }}</p>
-                        {% else %}
-                            <p class="text-muted mb-0">Клиент не привязан.</p>
-                        {% endif %}
-                    </div>
-                </div>
-                {% include "includes/deal_client_messages_block.html" %}
-            </div>
-        </div>
-        {% if not is_file_only_role %}
-            <div class="col-lg-6">
-                {% include "includes/deal_cost_panel.html" with deal=deal cost_summary=cost_summary %}
-            </div>
-        {% endif %}
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header py-2">Состояние проекта</div>
-                <div class="card-body">
-                    <ul class="nav nav-tabs mb-3" id="projectStageTabs" role="tablist">
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link active" id="stage-negotiation-tab" data-bs-toggle="tab" data-bs-target="#stage-negotiation" type="button" role="tab" aria-controls="stage-negotiation" aria-selected="true">
-                                Переговоры и КП
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="stage-approvals-tab" data-bs-toggle="tab" data-bs-target="#stage-approvals" type="button" role="tab" aria-controls="stage-approvals" aria-selected="false">
-                                Согласования
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="stage-design-tab" data-bs-toggle="tab" data-bs-target="#stage-design" type="button" role="tab" aria-controls="stage-design" aria-selected="false">
-                                Проектирование
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="stage-contract-tab" data-bs-toggle="tab" data-bs-target="#stage-contract" type="button" role="tab" aria-controls="stage-contract" aria-selected="false">
-                                Договор и оплата
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="stage-production-tab" data-bs-toggle="tab" data-bs-target="#stage-production" type="button" role="tab" aria-controls="stage-production" aria-selected="false">
-                                Производство
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="stage-install-tab" data-bs-toggle="tab" data-bs-target="#stage-install" type="button" role="tab" aria-controls="stage-install" aria-selected="false">
-                                Монтаж / Установка
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="stage-handover-tab" data-bs-toggle="tab" data-bs-target="#stage-handover" type="button" role="tab" aria-controls="stage-handover" aria-selected="false">
-                                Сдача клиенту
-                            </button>
-                        </li>
-                    </ul>
-
-                    <div class="tab-content" id="projectStageTabsContent">
-                        <div class="tab-pane fade show active" id="stage-negotiation" role="tabpanel" aria-labelledby="stage-negotiation-tab" tabindex="0">
-                            <p class="text-muted mb-0">Раздел в разработке. Здесь объединены этапы «Лид / квалификация» и «Переговоры и КП».</p>
-                        </div>
-                        <div class="tab-pane fade" id="stage-approvals" role="tabpanel" aria-labelledby="stage-approvals-tab" tabindex="0">
-                            <p class="text-muted mb-0">Раздел в разработке. Здесь будут инструменты этапа «Согласования».</p>
-                        </div>
-                        <div class="tab-pane fade" id="stage-design" role="tabpanel" aria-labelledby="stage-design-tab" tabindex="0">
-                            <p class="text-muted mb-0">Раздел в разработке. Здесь будут инструменты этапа "Проектирование".</p>
-                        </div>
-                        <div class="tab-pane fade" id="stage-contract" role="tabpanel" aria-labelledby="stage-contract-tab" tabindex="0">
-                            <p class="text-muted mb-0">Раздел в разработке. Здесь будут инструменты этапа "Договор и оплата".</p>
-                        </div>
-                        <div class="tab-pane fade" id="stage-production" role="tabpanel" aria-labelledby="stage-production-tab" tabindex="0">
-                            <p class="text-muted mb-0">Раздел в разработке. Здесь будут инструменты этапа "Производство".</p>
-                        </div>
-                        <div class="tab-pane fade" id="stage-install" role="tabpanel" aria-labelledby="stage-install-tab" tabindex="0">
-                            <p class="text-muted mb-0">Раздел в разработке. Здесь будут инструменты этапа "Монтаж / Установка".</p>
-                        </div>
-                        <div class="tab-pane fade" id="stage-handover" role="tabpanel" aria-labelledby="stage-handover-tab" tabindex="0">
-                            <p class="text-muted mb-0">Раздел в разработке. Здесь будут инструменты этапа "Сдача клиенту".</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-12">
-            {% include "includes/deal_files_block.html" with deal=deal client_files=client_files designer_files=designer_files sales_files=sales_files client_upload_form=client_upload_form designer_upload_form=designer_upload_form sales_upload_form=sales_upload_form %}
-        </div>
-
-        <div class="col-12">
-            {% include "includes/deal_tasks_block.html" with deal=deal tasks_for_deal=tasks_for_deal %}
-        </div>
-
-        {% if not is_file_only_role %}
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">История версий</div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-striped mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>#</th>
-                                        <th>Источник</th>
-                                        <th>Статус</th>
-                                        <th>Создана</th>
-                                        <th>Создал</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for version in versions %}
-                                        <tr>
-                                            <td>{{ version.version_number }}</td>
-                                            <td>{{ version.get_source_display }}</td>
-                                            <td>{{ version.get_status_display }}</td>
-                                            <td>{{ version.created_at|date:"d.m.Y H:i" }}</td>
-                                            <td>{{ version.created_by.username|default:"—" }}</td>
-                                        </tr>
-                                    {% empty %}
-                                        <tr>
-                                            <td colspan="5" class="text-muted">Версий пока нет.</td>
-                                        </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        {% endif %}
-
-        {% if not is_file_only_role %}
-            <div class="col-12">
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <span>Журнал изменений</span>
-                    <button
-                        class="btn btn-sm btn-outline-secondary"
-                        type="button"
-                        data-bs-toggle="collapse"
-                        data-bs-target="#change-log-panel"
-                        aria-expanded="false"
-                        aria-controls="change-log-panel"
-                    >
-                        Свернуть/развернуть
-                    </button>
-                </div>
-                <div class="collapse" id="change-log-panel">
-                    <div class="card-body">
-                        <div class="mb-2">
-                            <input
-                                id="change-log-search"
-                                type="search"
-                                class="form-control form-control-sm"
-                                placeholder="Поиск по журналу (поле, значения, пользователь)"
-                            >
-                        </div>
-                    {% if change_logs %}
-                        <ul id="change-log-list" class="list-group list-group-flush">
-                            {% for log in change_logs %}
-                                <li class="list-group-item px-0 change-log-item">
-                                    <strong>{{ log.field_path }}</strong>:
-                                    {{ log.old_value|default:"—" }} -> {{ log.new_value|default:"—" }}
-                                    <span class="text-muted">({{ log.changed_at|date:"d.m.Y H:i" }}, {{ log.changed_by.username|default:"system" }})</span>
-                                </li>
-                            {% endfor %}
-                        </ul>
+    <div class="mb-3 p-2 border rounded bg-light">
+        <div class="fw-semibold mb-2">Состояние проекта</div>
+        <style>
+            #projectStageTabs { -webkit-overflow-scrolling: touch; }
+            #projectStageTabs .nav-item { flex: 0 0 auto; }
+            #projectStageTabs .nav-link { padding: .25rem .6rem; font-size: .85rem; white-space: nowrap; }
+        </style>
+        <ul class="nav nav-pills flex-nowrap gap-1 overflow-auto pb-1" id="projectStageTabs" role="tablist" style="white-space:nowrap;">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="stage-negotiation-tab" data-bs-toggle="tab" data-bs-target="#stage-negotiation" type="button" role="tab" aria-controls="stage-negotiation" aria-selected="true">
+                    Переговоры и КП
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="stage-approvals-tab" data-bs-toggle="tab" data-bs-target="#stage-approvals" type="button" role="tab" aria-controls="stage-approvals" aria-selected="false">
+                    Согласования
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="stage-contract-tab" data-bs-toggle="tab" data-bs-target="#stage-contract" type="button" role="tab" aria-controls="stage-contract" aria-selected="false">
+                    Договор и оплата
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="stage-design-tab" data-bs-toggle="tab" data-bs-target="#stage-design" type="button" role="tab" aria-controls="stage-design" aria-selected="false">
+                    Проектирование
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="stage-production-tab" data-bs-toggle="tab" data-bs-target="#stage-production" type="button" role="tab" aria-controls="stage-production" aria-selected="false">
+                    Производство
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="stage-install-tab" data-bs-toggle="tab" data-bs-target="#stage-install" type="button" role="tab" aria-controls="stage-install" aria-selected="false">
+                    Монтаж / Установка
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="stage-handover-tab" data-bs-toggle="tab" data-bs-target="#stage-handover" type="button" role="tab" aria-controls="stage-handover" aria-selected="false">
+                    Сдача клиенту
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="stage-service-tab" data-bs-toggle="tab" data-bs-target="#stage-service" type="button" role="tab" aria-controls="stage-service" aria-selected="false">
+                    Сервис / Рекламации
+                </button>
+            </li>
+        </ul>
+        <div class="tab-content mt-2 pt-2 border-top" id="projectStageTabsContent">
+            <div class="tab-pane fade show active" id="stage-negotiation" role="tabpanel" aria-labelledby="stage-negotiation-tab" tabindex="0">
+                <div class="text-muted mb-4">
+                    {% if is_file_only_role %}
+                        <span class="me-3">Статус: {{ deal.get_status_display }}</span>
+                        <span class="me-3">Модулей: {{ deal.module_count }}</span>
                     {% else %}
-                        <p class="text-muted mb-0">Журнал пока пуст.</p>
+                        <span class="me-3 d-inline-flex align-items-center gap-2">
+                            Статус:
+                            {% include "includes/deal_status_block.html" with deal=deal status_choices=status_choices %}
+                        </span>
+                        <span class="d-inline-flex align-items-center gap-2">
+                            Модулей:
+                            {% include "includes/deal_module_block.html" with deal=deal %}
+                        </span>
                     {% endif %}
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-lg-6">
+                        <div class="d-flex flex-column gap-3">
+                            <div class="card">
+                                <div class="card-header py-2">Клиент</div>
+                                <div class="card-body py-2">
+                                    {% if deal.client %}
+                                        <p class="mb-1"><strong>{{ deal.client.full_name }}</strong></p>
+                                        <p class="mb-1">Телефон: {{ deal.client.phone|default:"—" }}</p>
+                                        <p class="mb-0">Email: {{ deal.client.email|default:"—" }}</p>
+                                    {% else %}
+                                        <p class="text-muted mb-0">Клиент не привязан.</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% include "includes/deal_client_messages_block.html" %}
+                            <div class="card">
+                                <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                                    <span>Проектировка</span>
+                                    {% if layout_approval.status == 'approved' or layout_approval.status == 'not_required' %}
+                                        <span class="badge text-bg-success">согласована</span>
+                                    {% else %}
+                                        <span class="badge text-bg-secondary">не согласована</span>
+                                    {% endif %}
+                                </div>
+                                <div class="card-body py-2">
+                                    {% if layout_latest_file %}
+                                        <div class="border rounded p-2 bg-light-subtle mb-2" style="min-height: 90px;">
+                                            {% if layout_latest_file.category == 'photo' %}
+                                                <img src="{% url 'deal_file_open' layout_latest_file.id %}?log=0" alt="планировка" style="max-height: 120px; max-width: 100%; object-fit: contain;">
+                                            {% elif layout_latest_file.category == 'pdf' %}
+                                                <iframe src="{% url 'deal_file_open' layout_latest_file.id %}?log=0#page=1" title="планировка" style="width: 100%; height: 120px; border: 0;"></iframe>
+                                            {% else %}
+                                                <div class="d-flex align-items-center justify-content-center text-muted" style="height:90px;">Миниатюра недоступна</div>
+                                            {% endif %}
+                                        </div>
+                                        <div class="small">
+                                            <a href="{% url 'deal_file_open' layout_latest_file.id %}" target="_blank"><strong>{{ layout_latest_file.original_name }}</strong></a>
+                                        </div>
+                                        <div class="small text-muted">Загружен: {{ layout_latest_file.updated_at|date:"d.m.Y H:i" }}</div>
+                                    {% else %}
+                                        <p class="text-muted mb-0 small">Файлов планировки пока нет.</p>
+                                    {% endif %}
+                                    <div class="small mt-2">
+                                        {% if layout_approval.status == 'approved' or layout_approval.status == 'not_required' %}
+                                            <span class="text-success">Планировка согласована в разделе «Согласования».</span>
+                                        {% else %}
+                                            <span class="text-muted">Планировка ещё не согласована.</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="small mt-1">
+                                        <a href="#stage-approvals">Планировки и согласование →</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+                    {% if not is_file_only_role %}
+                        <div class="col-lg-6">
+                            {% include "includes/deal_price_block.html" with deal=deal is_file_only_role=is_file_only_role %}
+                        </div>
+                    {% endif %}
+                    <div class="col-12">
+                        {% include "includes/deal_files_block.html" with deal=deal client_files=client_files designer_files=designer_files sales_files=sales_files client_upload_form=client_upload_form designer_upload_form=designer_upload_form sales_upload_form=sales_upload_form %}
+                    </div>
+
+                    <div class="col-12">
+                        {% include "includes/deal_tasks_block.html" with deal=deal tasks_for_deal=tasks_for_deal %}
+                    </div>
+
+                    {% if not is_file_only_role %}
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">История версий</div>
+                                <div class="card-body p-0">
+                                    <div class="table-responsive">
+                                        <table class="table table-striped mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th>Источник</th>
+                                                    <th>Статус</th>
+                                                    <th>Создана</th>
+                                                    <th>Создал</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for version in versions %}
+                                                    <tr>
+                                                        <td>{{ version.version_number }}</td>
+                                                        <td>{{ version.get_source_display }}</td>
+                                                        <td>{{ version.get_status_display }}</td>
+                                                        <td>{{ version.created_at|date:"d.m.Y H:i" }}</td>
+                                                        <td>{{ version.created_by.username|default:"—" }}</td>
+                                                    </tr>
+                                                {% empty %}
+                                                    <tr>
+                                                        <td colspan="5" class="text-muted">Версий пока нет.</td>
+                                                    </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    {% if not is_file_only_role %}
+                        <div class="col-12">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <span>Журнал изменений</span>
+                                <button
+                                    class="btn btn-sm btn-outline-secondary"
+                                    type="button"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#change-log-panel"
+                                    aria-expanded="false"
+                                    aria-controls="change-log-panel"
+                                >
+                                    Свернуть/развернуть
+                                </button>
+                            </div>
+                            <div class="collapse" id="change-log-panel">
+                                <div class="card-body">
+                                    <div class="mb-2">
+                                        <input
+                                            id="change-log-search"
+                                            type="search"
+                                            class="form-control form-control-sm"
+                                            placeholder="Поиск по журналу (поле, значения, пользователь)"
+                                        >
+                                    </div>
+                                {% if change_logs %}
+                                    <ul id="change-log-list" class="list-group list-group-flush">
+                                        {% for log in change_logs %}
+                                            <li class="list-group-item px-0 change-log-item">
+                                                <strong>{{ log.field_path }}</strong>:
+                                                {{ log.old_value|default:"—" }} -> {{ log.new_value|default:"—" }}
+                                                <span class="text-muted">({{ log.changed_at|date:"d.m.Y H:i" }}, {{ log.changed_by.username|default:"system" }})</span>
+                                            </li>
+                                        {% endfor %}
+                                    </ul>
+                                {% else %}
+                                    <p class="text-muted mb-0">Журнал пока пуст.</p>
+                                {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        </div>
+                    {% endif %}
                 </div>
             </div>
+            <div class="tab-pane fade" id="stage-approvals" role="tabpanel" aria-labelledby="stage-approvals-tab" tabindex="0">
+                {% include "includes/deal_approvals_block.html" %}
             </div>
-        {% endif %}
+            <div class="tab-pane fade" id="stage-contract" role="tabpanel" aria-labelledby="stage-contract-tab" tabindex="0">
+                <p class="text-muted mb-0 small">Раздел в разработке. Здесь будут инструменты этапа «Договор и оплата».</p>
+            </div>
+            <div class="tab-pane fade" id="stage-design" role="tabpanel" aria-labelledby="stage-design-tab" tabindex="0">
+                {% include "includes/deal_design_block.html" %}
+            </div>
+            <div class="tab-pane fade" id="stage-production" role="tabpanel" aria-labelledby="stage-production-tab" tabindex="0">
+                <p class="text-muted mb-0 small">Раздел в разработке. Здесь будут инструменты этапа «Производство».</p>
+            </div>
+            <div class="tab-pane fade" id="stage-install" role="tabpanel" aria-labelledby="stage-install-tab" tabindex="0">
+                <p class="text-muted mb-0 small">Раздел в разработке. Здесь будут инструменты этапа «Монтаж / Установка».</p>
+            </div>
+            <div class="tab-pane fade" id="stage-handover" role="tabpanel" aria-labelledby="stage-handover-tab" tabindex="0">
+                <p class="text-muted mb-0 small">Раздел в разработке. Здесь будут инструменты этапа «Сдача клиенту».</p>
+            </div>
+            <div class="tab-pane fade" id="stage-service" role="tabpanel" aria-labelledby="stage-service-tab" tabindex="0">
+                <p class="text-muted mb-0 small">Раздел в разработке. Здесь будут инструменты этапа «Сервис / Рекламации».</p>
+            </div>
+        </div>
     </div>
 
     <div class="modal fade" id="taskCreateModal" tabindex="-1" aria-hidden="true">
@@ -228,6 +265,28 @@
         </div>
     </div>
     <script>
+        (function () {
+            // Активировать нужную вкладку этапа по хэшу в URL (#stage-approvals и т.п.)
+            function activateStageFromHash() {
+                var hash = window.location.hash;
+                if (!hash || hash.indexOf('#stage-') !== 0) return;
+                var trigger = document.querySelector('[data-bs-target="' + hash + '"]');
+                if (!trigger || !window.bootstrap || !window.bootstrap.Tab) return;
+                window.bootstrap.Tab.getOrCreateInstance(trigger).show();
+                var panel = document.querySelector(hash);
+                if (panel) panel.scrollIntoView({ block: 'start' });
+            }
+            activateStageFromHash();
+            window.addEventListener('hashchange', activateStageFromHash);
+            // Держать хэш в URL актуальным при ручном переключении вкладок
+            document.querySelectorAll('#projectStageTabs [data-bs-toggle="tab"]').forEach(function (btn) {
+                btn.addEventListener('shown.bs.tab', function (e) {
+                    var target = e.target.getAttribute('data-bs-target');
+                    if (target) history.replaceState(null, '', target);
+                });
+            });
+        })();
+
         (function () {
             var input = document.getElementById('change-log-search');
             var list = document.getElementById('change-log-list');

@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "obshaya-rabochaya": {
+      "command": "D:\\Scan_Pdf\\.venv\\Scripts\\python.exe",
+      "args": [
+        "D:\\Scan_Pdf\\mcp_http_bridge.py",
+        "http://192.168.200.20:7861/mcp"
+      ],
+      "cwd": "D:\\Scan_Pdf",
+      "env": {
+        "PYTHONUTF8": "1",
+        "MCP_NO_OPENROUTER": "1",
+        "NO_PROXY": "localhost,127.0.0.1,::1,192.168.200.20,192.168.0.0/16,10.0.0.0/8",
+        "no_proxy": "localhost,127.0.0.1,::1,192.168.200.20,192.168.0.0/16,10.0.0.0/8",
+        "HTTP_PROXY": "",
+        "HTTPS_PROXY": "",
+        "http_proxy": "",
+        "https_proxy": ""
+      }
+    }
+  }
+}

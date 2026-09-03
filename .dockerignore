@@ -1,0 +1,50 @@
+# Виртуальные окружения (главная причина 468 МБ контекста)
+.venv/
+venv/
+env/
+umnik/.venv/
+**/.venv/
+**/site-packages/
+
+# Git и IDE
+.git/
+.gitignore
+.cursor/
+.idea/
+.vscode/
+
+# Python-кэш
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Пользовательские файлы CRM — не нужны в образе, монтируются томом
+crm_files/
+umnik/index/
+umnik/logs/
+umnik/*.log
+media/
+staticfiles/
+
+# Логи и временное
+*.log
+*.sqlite3
+*.bak
+tmp/
+temp/
+
+# Секреты
+.env
+
+# Прочее
+start.bat
+start.ps1
+added-help/
+docs/
+*.md

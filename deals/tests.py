@@ -715,3 +715,305 @@ class AdditionalOptionsTests(TestCase):
         created = DealAdditionalOptionLine.objects.filter(project_version=self.version, name_snapshot='Мой кастом').first()
         self.assertIsNotNone(created)
         self.assertEqual(created.unit_snapshot, 'pcs')
+
+
+class UmnikArchiveQueryTests(TestCase):
+    def test_prefers_client_and_site_names(self):
+        from types import SimpleNamespace
+
+        from deals.services.umnik import archive_query_for_deal
+
+        deal = SimpleNamespace(
+            code_client_name='Иванов',
+            code_site_name='Пулково',
+            project_code='3МД-Иванов-Пулково',
+        )
+        self.assertEqual(archive_query_for_deal(deal), 'Иванов Пулково')
+
+    def test_strips_module_prefix_from_project_code(self):
+        from types import SimpleNamespace
+
+        from deals.services.umnik import archive_query_for_deal
+
+        deal = SimpleNamespace(
+            code_client_name='',
+            code_site_name='',
+            project_code='3МД Иванов Пулково',
+        )
+        self.assertEqual(archive_query_for_deal(deal), 'Иванов Пулково')
+
+
+class UmnikAttachFilesTests(TestCase):
+    def test_split_attach_files_strips_marker(self):
+        from deals.services.umnik import split_attach_files
+
+        text, paths = split_attach_files(
+            'Готово.\n'
+            r'ATTACH_FILE: D:\CH-CRM\umnik\data\chat_outbox\план.pdf'
+            '\nНапомню: 104 м²'
+        )
+        self.assertEqual(paths, [r'D:\CH-CRM\umnik\data\chat_outbox\план.pdf'])
+        self.assertIn('Готово', text)
+        self.assertIn('104', text)
+        self.assertNotIn('ATTACH_FILE', text)
+
+
+class DealArchiveViewTests(TestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(username='archive_mgr', password='pass1234', role='manager')
+        self.deal = Deal.objects.create(
+            project_code='3МД Иванов Пулково',
+            module_count=3,
+            code_client_name='Иванов',
+            code_site_name='Пулково',
+        )
+
+    def test_requires_login(self):
+        response = self.client.get(reverse('deal_archive', kwargs={'deal_id': self.deal.id}))
+        self.assertEqual(response.status_code, 302)
+
+    def test_renders_layout_from_umnik(self):
+        from unittest.mock import patch
+
+        self.client.force_login(self.user)
+        payload = {
+            'ok': True,
+            'query': 'Иванов Пулково',
+            'layouts': [
+                {
+                    'path': r'D:\Общая_Рабочая\Иванов\план.pdf',
+                    'name': 'план',
+                    'version': 'В1',
+                    'area_total': 142.5,
+                    'area_living': 118.0,
+                    'room_counts': {'спальня': 3},
+                    'rooms': [{'name': 'спальня', 'area_m2': 14.2}],
+                }
+            ],
+            'error': '',
+        }
+        with patch('deals.views.lookup_deal_archive', return_value=payload):
+            response = self.client.get(reverse('deal_archive', kwargs={'deal_id': self.deal.id}))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '142.5')
+        self.assertContains(response, 'спальня')
+        self.assertContains(response, 'Архив планировок')
+
+    def test_deal_page_has_archive_placeholder(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('deal_detail', kwargs={'pk': self.deal.id}))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'deal-archive')
+        self.assertContains(response, reverse('deal_archive', kwargs={'deal_id': self.deal.id}))
+        self.assertContains(response, 'id="stage-approvals"')
+        self.assertContains(response, 'КП / планировка у клиента')
+
+
+class ArchiveSearchViewTests(TestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(username='arch_search', password='pass1234', role='manager')
+
+    def test_requires_login(self):
+        response = self.client.get(reverse('archive_search'))
+        self.assertEqual(response.status_code, 302)
+
+    def test_empty_query_shows_form(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('archive_search'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Архив планировок')
+        self.assertContains(response, 'name="q"')
+
+    def test_renders_lookup_results(self):
+        from unittest.mock import patch
+
+        self.client.force_login(self.user)
+        payload = {
+            'ok': True,
+            'query': 'Ирина Раздолье',
+            'layouts': [
+                {
+                    'path': r'D:\Общая_Рабочая\Ирина\план.pdf',
+                    'name': 'план',
+                    'object': 'Ирина Раздолье',
+                    'version': 'В1',
+                    'area_total': 86.0,
+                    'area_living': 70.0,
+                    'room_counts': {'спальня': 2},
+                    'rooms': [{'name': 'спальня', 'area_m2': 12.0}],
+                }
+            ],
+            'error': '',
+        }
+        with patch('deals.views.fetch_archive', return_value=payload):
+            response = self.client.get(reverse('archive_search'), {'q': 'Ирина Раздолье'})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Ирина Раздолье')
+        self.assertContains(response, '86.0')
+        self.assertContains(response, 'спальня')
+
+
+class UmnikChatAccessTests(TestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.admin = user_model.objects.create_user(username='chat_admin', password='pass1234', role='admin')
+        self.manager = user_model.objects.create_user(username='chat_mgr', password='pass1234', role='manager')
+        self.deal = Deal.objects.create(project_code='3МД Чат Тест', module_count=3)
+
+    def test_manager_sees_chat_widget(self):
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('deal_detail', kwargs={'pk': self.deal.id}))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="umnik-panel"')
+
+    def test_admin_sees_chat_widget(self):
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('deal_detail', kwargs={'pk': self.deal.id}))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="umnik-panel"')
+
+    def test_manager_can_post_chat(self):
+        self.client.force_login(self.manager)
+        response = self.client.post(
+            reverse('umnik_chat_send'),
+            data=json.dumps({'message': 'привет'}),
+            content_type='application/json',
+        )
+        self.assertNotEqual(response.status_code, 403)
+
+    def test_chat_history_persists_and_new_thread(self):
+        from unittest.mock import patch
+
+        from deals.models import UmnikChatMessage, UmnikChatThread
+
+        self.client.force_login(self.manager)
+        with patch('deals.views.ask_umnik_chat', return_value={'ok': True, 'answer': 'Ответ умника', 'changed': False}):
+            first = self.client.post(
+                reverse('umnik_chat_send'),
+                data=json.dumps({'message': 'сколько модулей'}),
+                content_type='application/json',
+            )
+        self.assertEqual(first.status_code, 200)
+        payload = first.json()
+        thread_id = payload['thread']['id']
+        self.assertEqual(payload['thread']['kind'], 'general')
+        self.assertEqual(UmnikChatMessage.objects.filter(thread_id=thread_id).count(), 2)
+
+        listed = self.client.get(reverse('umnik_chat_bootstrap'))
+        self.assertEqual(listed.status_code, 200)
+        self.assertTrue(any(item['id'] == thread_id for item in listed.json()['threads']))
+
+        created = self.client.post(
+            reverse('umnik_chat_new'),
+            data=json.dumps({'kind': 'general'}),
+            content_type='application/json',
+        )
+        self.assertEqual(created.status_code, 200)
+        self.assertNotEqual(created.json()['thread']['id'], thread_id)
+        self.assertEqual(UmnikChatThread.objects.filter(user=self.manager, kind='general').count(), 2)
+
+        deal_chat = self.client.post(
+            reverse('umnik_chat_new'),
+            data=json.dumps({'kind': 'deal', 'deal_id': self.deal.id}),
+            content_type='application/json',
+        )
+        self.assertEqual(deal_chat.status_code, 200)
+        self.assertEqual(deal_chat.json()['thread']['deal_id'], self.deal.id)
+        self.assertContains(self.client.get(reverse('deal_detail', kwargs={'pk': self.deal.id})), 'umnik-general-list')
+
+    def test_designer_cannot_update_via_umnik_actions(self):
+        from deals.services.umnik_actions import update_deal
+
+        designer = get_user_model().objects.create_user(username='chat_des', password='pass1234', role='designer')
+        result = update_deal(self.deal, designer, {'status': 'qualified'})
+        self.assertFalse(result['ok'])
+        self.assertEqual(result['error'], 'forbidden')
+        self.deal.refresh_from_db()
+        self.assertNotEqual(self.deal.status, Deal.Status.QUALIFIED)
+
+    def test_manager_cannot_delete_via_umnik_actions(self):
+        from deals.services.umnik_actions import delete_deal
+
+        result = delete_deal(self.deal, self.manager)
+        self.assertFalse(result['ok'])
+        self.assertTrue(Deal.objects.filter(pk=self.deal.id).exists())
+
+    def test_admin_deletes_via_umnik_actions(self):
+        from deals.services.umnik_actions import delete_deal
+
+        extra = Deal.objects.create(project_code='3МД Удалить Чат', module_count=1)
+        result = delete_deal(extra, self.admin)
+        self.assertTrue(result['ok'])
+        self.assertFalse(Deal.objects.filter(pk=extra.id).exists())
+
+    def test_update_deal_status_via_umnik_actions(self):
+        from deals.services.umnik_actions import update_deal
+
+        result = update_deal(self.deal, self.admin, {'status': 'qualified'})
+        self.assertTrue(result['ok'])
+        self.deal.refresh_from_db()
+        self.assertEqual(self.deal.status, Deal.Status.QUALIFIED)
+
+
+class UmnikInternalApiTests(TestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.admin = user_model.objects.create_user(username='admin', password='pass1234', role='admin')
+        self.deal = Deal.objects.create(project_code='3МД API Тест', module_count=3)
+
+    def test_rejects_missing_token(self):
+        response = self.client.get(reverse('umnik_deal_list'))
+        self.assertEqual(response.status_code, 401)
+
+    def test_lists_deals_with_shared_token(self):
+        with override_settings(UMNIK_TOKEN='test-umnik-token'):
+            response = self.client.get(
+                reverse('umnik_deal_list'),
+                HTTP_AUTHORIZATION='Bearer test-umnik-token',
+                HTTP_X_UMNIK_ACTOR='admin',
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        codes = [item['project_code'] for item in payload['deals']]
+        self.assertIn('3МД API Тест', codes)
+
+    def test_whoami_admin_can_delete(self):
+        with override_settings(UMNIK_TOKEN='test-umnik-token'):
+            response = self.client.get(
+                reverse('umnik_me'),
+                HTTP_AUTHORIZATION='Bearer test-umnik-token',
+                HTTP_X_UMNIK_ACTOR='admin',
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        self.assertTrue(payload['can_delete'])
+        self.assertTrue(payload['can_edit'])
+
+    def test_admin_deletes_deal(self):
+        extra = Deal.objects.create(project_code='3МД Удалить API', module_count=1)
+        with override_settings(UMNIK_TOKEN='test-umnik-token'):
+            response = self.client.delete(
+                reverse('umnik_deal_detail', kwargs={'deal_id': extra.id}),
+                HTTP_AUTHORIZATION='Bearer test-umnik-token',
+                HTTP_X_UMNIK_ACTOR='admin',
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['ok'])
+        self.assertFalse(Deal.objects.filter(pk=extra.id).exists())
+
+    def test_manager_cannot_delete_deal(self):
+        get_user_model().objects.create_user(username='api_mgr', password='pass1234', role='manager')
+        with override_settings(UMNIK_TOKEN='test-umnik-token'):
+            response = self.client.delete(
+                reverse('umnik_deal_detail', kwargs={'deal_id': self.deal.id}),
+                HTTP_AUTHORIZATION='Bearer test-umnik-token',
+                HTTP_X_UMNIK_ACTOR='api_mgr',
+            )
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(Deal.objects.filter(pk=self.deal.id).exists())
+
+

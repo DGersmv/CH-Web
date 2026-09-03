@@ -1,55 +1,27 @@
 {% extends "base.html" %}
 
 {% block content %}
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="mb-0">Dashboard</h1>
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <div>
+            <h1 class="mb-1">Главная</h1>
+            <a href="{% url 'cabinet' %}" class="small text-muted">Личный кабинет</a>
+        </div>
         <div class="d-flex align-items-center gap-2">
-            {% if user.role != 'designer' and user.role != 'production' %}
-                <button
-                    type="button"
-                    class="btn btn-primary"
-                    data-bs-toggle="modal"
-                    data-bs-target="#newLeadModal"
-                >
+            {% if not is_file_only_role %}
+                <a href="{% url 'service_create' %}" class="btn btn-outline-primary">Новое обращение</a>
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newLeadModal">
                     Новый лид
                 </button>
             {% endif %}
-            <span class="text-muted">Пользователь: {{ user.username }}</span>
+            <span class="text-muted">{{ user.username }}</span>
         </div>
     </div>
-
-    {% if user.role == 'head' %}
-        <div class="row g-3 mb-4">
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-body">
-                        <h6 class="card-title text-muted">Всего сделок в воронке</h6>
-                        <p class="display-6 mb-0">{{ pipeline_total }}</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-body">
-                        <h6 class="card-title text-muted">Сделок без движения > 7 дней</h6>
-                        <p class="display-6 mb-0">{{ stale_deals_count }}</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    {% endif %}
-
-    {% if is_leadership %}
-        <div class="mb-4">
-            {% include "includes/dashboard_employees_block.html" with employees=employees employee_create_form=employee_create_form %}
-        </div>
-    {% endif %}
 
     <div class="mb-4">
-        {% include "includes/dashboard_messages_block.html" %}
+        {% include "includes/dashboard_notifications_block.html" with latest_notifications=latest_notifications %}
     </div>
 
-    {% if user.role == 'designer' or user.role == 'production' %}
+    {% if is_file_only_role %}
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title mb-2">Режим проектных файлов</h5>
@@ -58,120 +30,145 @@
             </div>
         </div>
     {% else %}
-    <div class="row g-4">
-        <div class="col-lg-7">
-            <div class="card h-100">
-                <div class="card-header">Мои активные сделки</div>
-                <div class="card-body p-0">
-                    {% if my_active_deals %}
-                        <div class="table-responsive">
-                            <table class="table table-striped mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>Проект</th>
-                                        <th>Клиент</th>
-                                        <th>Статус</th>
-                                        <th>Обновлено</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for deal in my_active_deals %}
-                                        <tr>
-                                            <td><a href="{% url 'deal_detail' deal.id %}">{{ deal.project_code }}</a></td>
-                                            <td>{{ deal.client.full_name|default:"—" }}</td>
-                                            <td>{{ deal.get_status_display }}</td>
-                                            <td>{{ deal.updated_at|date:"d.m.Y H:i" }}</td>
-                                        </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    {% else %}
-                        <p class="text-muted p-3 mb-0">Активных сделок нет.</p>
-                    {% endif %}
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-lg-3">
+                <a href="{% url 'deals' %}" class="card text-decoration-none h-100">
+                    <div class="card-body">
+                        <h6 class="card-title text-muted">Сделок в работе</h6>
+                        <p class="display-6 mb-0">{{ active_deals_count }}</p>
+                    </div>
+                </a>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h6 class="card-title text-muted">Задач сегодня / просрочено</h6>
+                        <p class="display-6 mb-0">{{ urgent_tasks|length }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-lg-3">
+                <a href="{% url 'service_list' %}" class="card text-decoration-none h-100">
+                    <div class="card-body">
+                        <h6 class="card-title text-muted">Открытых обращений</h6>
+                        <p class="display-6 mb-0">{{ open_service_count }}</p>
+                    </div>
+                </a>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h6 class="card-title text-muted">Новых лидов</h6>
+                        <p class="display-6 mb-0">{{ new_leads|length }}</p>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="col-lg-5">
-            <div class="card h-100">
-                <div class="card-header">Задачи на сегодня и просроченные</div>
-                <div class="card-body">
-                    {% if urgent_tasks %}
-                        <ul class="list-group list-group-flush">
-                            {% for task in urgent_tasks %}
-                                <li class="list-group-item px-0 d-flex justify-content-between">
-                                    <span>
-                                        {{ task.title }}
-                                        {% if task.deal %}
-                                            <small class="text-muted d-block">{{ task.deal.project_code }}</small>
-                                        {% endif %}
-                                    </span>
-                                    <small class="text-muted">{{ task.due_date|date:"d.m.Y" }}</small>
-                                </li>
-                            {% endfor %}
-                        </ul>
-                    {% else %}
-                        <p class="text-muted mb-0">На сегодня и просроченных задач нет.</p>
-                    {% endif %}
+        <div class="row g-4">
+            <div class="col-lg-7">
+                <div class="card h-100">
+                    <div class="card-header">Лента — что происходит</div>
+                    <div class="card-body p-0">
+                        {% if activity_feed %}
+                            <ul class="list-group list-group-flush">
+                                {% for item in activity_feed %}
+                                    <li class="list-group-item d-flex gap-2 align-items-start">
+                                        <span>{{ item.icon }}</span>
+                                        <span class="flex-grow-1">
+                                            {% if item.url %}
+                                                <a href="{{ item.url }}" class="text-decoration-none">{{ item.text }}</a>
+                                            {% else %}
+                                                {{ item.text }}
+                                            {% endif %}
+                                            <span class="small text-muted d-block">{{ item.actor }} · {{ item.when|date:"d.m.Y H:i" }}</span>
+                                        </span>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <p class="text-muted p-3 mb-0">Событий пока нет.</p>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <div class="col-12">
-            {% include "includes/dashboard_leads_block.html" with new_leads=new_leads %}
-        </div>
-
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">Свежие обновления из ArchiCAD</div>
-                <div class="card-body">
-                    {% if archicad_updates %}
-                        <ul class="list-group list-group-flush">
-                            {% for version in archicad_updates %}
-                                <li class="list-group-item px-0">
-                                    <a href="{% url 'deal_detail' version.deal.id %}">
-                                        {{ version.created_at|date:"d.m.Y H:i" }} — {{ version.created_by.username|default:"system" }}
-                                        прислал v{{ version.version_number }} по сделке {{ version.deal.project_code }}
-                                    </a>
-                                </li>
-                            {% endfor %}
-                        </ul>
-                    {% else %}
-                        <p class="text-muted mb-0">Пока нет обновлений из ArchiCAD.</p>
-                    {% endif %}
+            <div class="col-lg-5">
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Открытые обращения (Сервис)</span>
+                        <a href="{% url 'service_list' %}" class="small">все</a>
+                    </div>
+                    <div class="card-body">
+                        {% if open_service_requests %}
+                            <ul class="list-group list-group-flush">
+                                {% for sr in open_service_requests %}
+                                    <li class="list-group-item px-0">
+                                        <div class="d-flex justify-content-between align-items-start gap-2">
+                                            <a href="{% url 'service_detail' sr.id %}" class="text-decoration-none">SR-{{ sr.number }}: {{ sr.title }}</a>
+                                            <span class="badge {{ sr.priority_badge_class }}">{{ sr.get_priority_display }}</span>
+                                        </div>
+                                        <div class="small text-muted">
+                                            {{ sr.get_status_display }}{% if sr.deal %} · {{ sr.deal.project_code }}{% endif %}
+                                        </div>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <p class="text-muted mb-0">Открытых обращений нет.</p>
+                        {% endif %}
+                    </div>
                 </div>
-            </div>
-        </div>
 
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">Сделки без движения</div>
-                <div class="card-body">
-                    {% if stale_deals %}
-                        <ul class="list-group list-group-flush">
-                            {% for deal in stale_deals %}
-                                <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
-                                    <div>
+                <div class="card mb-4">
+                    <div class="card-header">Задачи на сегодня и просроченные</div>
+                    <div class="card-body">
+                        {% if urgent_tasks %}
+                            <ul class="list-group list-group-flush">
+                                {% for task in urgent_tasks %}
+                                    <li class="list-group-item px-0 d-flex justify-content-between">
+                                        <span>
+                                            {% if task.deal %}
+                                                <a href="{% url 'deal_detail' task.deal.id %}">{{ task.title }}</a>
+                                                <small class="text-muted d-block">{{ task.deal.project_code }}</small>
+                                            {% else %}
+                                                <a href="{% url 'tasks' %}">{{ task.title }}</a>
+                                            {% endif %}
+                                        </span>
+                                        <small class="text-muted">{{ task.due_date|date:"d.m.Y" }}</small>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <p class="text-muted mb-0">На сегодня и просроченных задач нет.</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">Новые лиды</div>
+                    <div class="card-body">
+                        {% if new_leads %}
+                            <ul class="list-group list-group-flush">
+                                {% for deal in new_leads %}
+                                    <li class="list-group-item px-0">
                                         <a href="{% url 'deal_detail' deal.id %}">{{ deal.project_code }}</a>
                                         <div class="small text-muted">
-                                            {{ deal.get_status_display }}{% if deal.assigned_manager %} • {{ deal.assigned_manager.username }}{% endif %}
+                                            {{ deal.client.full_name|default:"—" }} · {{ deal.created_at|date:"d.m.Y" }}
                                         </div>
-                                    </div>
-                                    <span class="badge text-bg-warning">молчат {{ deal.silent_days }} дней</span>
-                                </li>
-                            {% endfor %}
-                        </ul>
-                    {% else %}
-                        <p class="text-muted mb-0">Сделок без движения нет.</p>
-                    {% endif %}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <p class="text-muted mb-0">Новых лидов нет.</p>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
     {% endif %}
 
-    {% if user.role != 'designer' and user.role != 'production' %}
+    {% if not is_file_only_role %}
         <div class="modal fade" id="newLeadModal" tabindex="-1" aria-labelledby="newLeadModalLabel" aria-hidden="true">
             <div class="modal-dialog modal-lg">
                 <div class="modal-content">

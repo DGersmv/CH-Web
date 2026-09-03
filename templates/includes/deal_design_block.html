@@ -1,0 +1,165 @@
+<div id="deal-design-block">
+    <div class="row g-3">
+        <div class="col-lg-7">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="fw-semibold">Разделы рабочей документации</div>
+                <span class="small text-muted">
+                    выпущено {{ design_gate.required_satisfied }} / {{ design_gate.required_total }} обязательных
+                </span>
+            </div>
+            <div class="table-responsive border rounded">
+                <table class="table table-sm align-middle mb-0">
+                    <thead class="table-light">
+                        <tr class="small text-muted">
+                            <th style="min-width:180px">Раздел</th>
+                            <th style="min-width:150px">Статус</th>
+                            <th>Кто выпустил</th>
+                            <th>Дата</th>
+                            <th style="min-width:220px">Комментарий / файл</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for item in design_sections_list %}
+                        <tr>
+                            <td>
+                                <div class="fw-semibold">
+                                    <a href="{% url 'deal_design_section_detail' deal.id item.slug %}">{{ item.title }}</a>
+                                    {% if not item.is_required %}<span class="badge text-bg-light border">необязательно</span>{% endif %}
+                                </div>
+                                {% if item.hint %}<div class="small text-muted">{{ item.hint }}</div>{% endif %}
+                                {% if item.notes %}<div class="small text-muted fst-italic">📝 есть рабочие заметки</div>{% endif %}
+                                <div class="d-flex gap-2 mt-1">
+                                    <form method="post" action="{% url 'deal_design_manage' deal.id %}"
+                                          hx-post="{% url 'deal_design_manage' deal.id %}"
+                                          hx-target="#deal-design-block" hx-swap="outerHTML">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="action" value="toggle_required">
+                                        <input type="hidden" name="slug" value="{{ item.slug }}">
+                                        <button class="btn btn-link btn-sm p-0 small text-decoration-none" type="submit">
+                                            {% if item.is_required %}сделать необязательным{% else %}сделать обязательным{% endif %}
+                                        </button>
+                                    </form>
+                                    {% if item.is_custom %}
+                                        <form method="post" action="{% url 'deal_design_manage' deal.id %}"
+                                              hx-post="{% url 'deal_design_manage' deal.id %}"
+                                              hx-target="#deal-design-block" hx-swap="outerHTML"
+                                              hx-confirm="Удалить раздел «{{ item.title }}»?">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="action" value="remove">
+                                            <input type="hidden" name="slug" value="{{ item.slug }}">
+                                            <button class="btn btn-link btn-sm p-0 small text-danger text-decoration-none" type="submit">удалить</button>
+                                        </form>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td>
+                                {% if item.status == 'released' %}
+                                    <span class="badge text-bg-success">выпущен</span>
+                                {% elif item.status == 'not_required' %}
+                                    <span class="badge text-bg-success">не требуется</span>
+                                {% elif item.status == 'review' %}
+                                    <span class="badge text-bg-info">на проверке</span>
+                                {% elif item.status == 'in_progress' %}
+                                    <span class="badge text-bg-primary">в работе</span>
+                                {% elif item.status == 'on_hold' %}
+                                    <span class="badge text-bg-warning">отложен</span>
+                                {% else %}
+                                    <span class="badge text-bg-secondary">не начато</span>
+                                {% endif %}
+                            </td>
+                            <td class="small text-muted">{{ item.decided_by.username|default:"—" }}</td>
+                            <td class="small text-muted">{% if item.decided_at %}{{ item.decided_at|date:"d.m.Y H:i" }}{% else %}—{% endif %}</td>
+                            <td>
+                                <form method="post"
+                                      action="{% url 'deal_design_update' deal.id %}"
+                                      hx-post="{% url 'deal_design_update' deal.id %}"
+                                      hx-target="#deal-design-block"
+                                      hx-swap="outerHTML"
+                                      class="d-flex flex-column gap-1">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="slug" value="{{ item.slug }}">
+                                    <div class="d-flex gap-1">
+                                        <select name="status" class="form-select form-select-sm">
+                                            {% for value, label in design_status_choices %}
+                                                <option value="{{ value }}" {% if value == item.status %}selected{% endif %}>{{ label }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <select name="project_version" class="form-select form-select-sm" style="max-width:110px">
+                                            <option value="">— версия —</option>
+                                            {% for v in design_versions %}
+                                                <option value="{{ v.id }}" {% if item.project_version_id == v.id %}selected{% endif %}>v{{ v.version_number }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="d-flex gap-1">
+                                        <input type="text" name="comment" value="{{ item.comment }}"
+                                               class="form-control form-control-sm" placeholder="комментарий / имя файла">
+                                        <button class="btn btn-sm btn-primary" type="submit">OK</button>
+                                    </div>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <form method="post" action="{% url 'deal_design_manage' deal.id %}"
+                  hx-post="{% url 'deal_design_manage' deal.id %}"
+                  hx-target="#deal-design-block" hx-swap="outerHTML"
+                  class="d-flex flex-wrap gap-1 mt-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="add">
+                <input type="text" name="title" class="form-control form-control-sm" style="max-width:200px"
+                       placeholder="свой раздел" required>
+                <input type="text" name="hint" class="form-control form-control-sm" style="max-width:220px"
+                       placeholder="подсказка (необязательно)">
+                <label class="form-check-label small d-flex align-items-center gap-1">
+                    <input type="checkbox" name="is_required" class="form-check-input mt-0" checked> обязательный
+                </label>
+                <button class="btn btn-sm btn-outline-secondary" type="submit">Добавить раздел</button>
+            </form>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="card">
+                <div class="card-body py-2">
+                    <div class="fw-semibold mb-1">Гейт этапа «Проектирование»</div>
+                    {% if deal.design_passed_at %}
+                        <div class="alert alert-success py-2 mb-2 small">
+                            Этап пройден {{ deal.design_passed_at|date:"d.m.Y H:i" }}.
+                        </div>
+                        <form method="post"
+                              action="{% url 'deal_design_stage' deal.id %}"
+                              hx-post="{% url 'deal_design_stage' deal.id %}"
+                              hx-target="#deal-design-block"
+                              hx-swap="outerHTML">
+                            {% csrf_token %}
+                            <button class="btn btn-sm btn-outline-danger" name="action" value="reopen" type="submit">Вернуть на доработку</button>
+                        </form>
+                    {% else %}
+                        <ul class="small mb-2 ps-3">
+                            <li>Обязательных выпущено: {{ design_gate.required_satisfied }} / {{ design_gate.required_total }}</li>
+                        </ul>
+                        {% if design_gate.blocking %}
+                            <div class="small text-muted mb-2">
+                                Не выпущены: {% for b in design_gate.blocking %}{{ b.title }}{% if not forloop.last %}, {% endif %}{% endfor %}
+                            </div>
+                        {% endif %}
+                        <form method="post"
+                              action="{% url 'deal_design_stage' deal.id %}"
+                              hx-post="{% url 'deal_design_stage' deal.id %}"
+                              hx-target="#deal-design-block"
+                              hx-swap="outerHTML">
+                            {% csrf_token %}
+                            <button class="btn btn-sm btn-success" name="action" value="pass" type="submit"
+                                    {% if not design_gate.passed %}disabled{% endif %}>
+                                Завершить этап «Проектирование»
+                            </button>
+                        </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

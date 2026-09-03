@@ -17,21 +17,12 @@
                 placeholder="Код проекта, клиент или телефон"
             >
         </div>
-        <div class="col-md-3">
+        <div class="col-md-6">
             <label for="status" class="form-label">Статус</label>
             <select name="status" id="status" class="form-select">
                 <option value="">Все</option>
                 {% for value, label in status_choices %}
                     <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="col-md-3">
-            <label for="assigned_manager" class="form-label">Менеджер</label>
-            <select name="assigned_manager" id="assigned_manager" class="form-select">
-                <option value="">Все</option>
-                {% for manager in manager_choices %}
-                    <option value="{{ manager.id }}" {% if selected_manager == manager.id|stringformat:"s" %}selected{% endif %}>{{ manager.username }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -44,12 +35,6 @@
                     <input type="radio" class="btn-check" name="module_count" id="module_{{ mc }}" value="{{ mc }}" {% if selected_module_count == mc|stringformat:"s" %}checked{% endif %}>
                     <label class="btn btn-outline-secondary" for="module_{{ mc }}">{{ mc }}</label>
                 {% endfor %}
-            </div>
-        </div>
-        <div class="col-12">
-            <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" name="mine" id="mine" value="1" {% if selected_mine %}checked{% endif %}>
-                <label class="form-check-label" for="mine">Мои сделки</label>
             </div>
         </div>
         <div class="col-12">
@@ -66,7 +51,6 @@
                     <th>Клиент</th>
                     <th>Модули</th>
                     <th>Статус</th>
-                    <th>Менеджер</th>
                     <th>Обновлено</th>
                     {% if can_view_latest_total %}
                         <th>Сумма последней версии</th>
@@ -82,7 +66,6 @@
                         <td>
                             <span class="badge text-bg-secondary">{{ deal.get_status_display }}</span>
                         </td>
-                        <td>{{ deal.assigned_manager.username|default:"—" }}</td>
                         <td>{{ deal.updated_at|date:"d.m.Y H:i" }}</td>
                         {% if can_view_latest_total %}
                             <td>
@@ -96,7 +79,7 @@
                     </tr>
                 {% empty %}
                     <tr>
-                        <td colspan="{% if can_view_latest_total %}7{% else %}6{% endif %}" class="text-muted">Сделки пока отсутствуют.</td>
+                        <td colspan="{% if can_view_latest_total %}6{% else %}5{% endif %}" class="text-muted">Сделки пока отсутствуют.</td>
                     </tr>
                 {% endfor %}
             </tbody>

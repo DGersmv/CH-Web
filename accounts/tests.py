@@ -78,3 +78,22 @@ class RoleAndAccessTests(TestCase):
         self.client.force_login(self.manager)
         response = self.client.get(reverse('deal_file_open', kwargs={'file_id': project_file.id}))
         self.assertEqual(response.status_code, 403)
+
+
+class UmnikCapabilityTests(TestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.admin = user_model.objects.create_user(username='cap_admin', password='pass1234', role='admin')
+        self.manager = user_model.objects.create_user(username='cap_mgr', password='pass1234', role='manager')
+        self.designer = user_model.objects.create_user(username='cap_des', password='pass1234', role='designer')
+
+    def test_admin_can_delete_manager_cannot(self):
+        from accounts.permissions import can_delete_deals, can_edit_deals, umnik_capabilities
+
+        self.assertTrue(can_delete_deals(self.admin))
+        self.assertTrue(can_edit_deals(self.admin))
+        self.assertFalse(can_delete_deals(self.manager))
+        self.assertTrue(can_edit_deals(self.manager))
+        self.assertFalse(can_edit_deals(self.designer))
+        self.assertTrue(umnik_capabilities(self.admin)['can_delete'])
+        self.assertFalse(umnik_capabilities(self.manager)['can_delete'])

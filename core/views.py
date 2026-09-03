@@ -1,5 +1,5 @@
 import mimetypes
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
@@ -7,8 +7,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
 from django.contrib.auth import logout as auth_logout
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Prefetch
-from django.db.models import Q
+from django.db.models import Case, IntegerField, Prefetch, Q, Value, When
 from django.http import FileResponse, Http404, HttpResponseBadRequest, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -24,7 +23,10 @@ from accounts.permissions import is_file_only_role, is_leadership
 from clients.forms import ClientForm
 from clients.models import Client
 from deals.forms import DashboardLeadForm, DealConfiguratorForm, DealFileUploadForm
-from deals.models import ChangeLog, Deal, DealClientMessage, LibraryAsset, ProjectFile, ProjectVersion
+from deals.models import ChangeLog, Deal, DealClientMessage, LibraryAsset, ProjectFile, ProjectVersion, ServiceRequest
+from deals.services.activity_feed import build_activity_feed
+from deals.services.approvals import build_approvals_context
+from deals.services.design import build_design_context
 from deals.services.storage_paths import ensure_library_dirs, get_files_root
 from deals.views import _files_context
 from deals.services.bathrooms import bathrooms_button_enabled
@@ -33,141 +35,120 @@ from system_settings.events import record_domain_event
 from tasks.models import Task
 
 
-def _display_name(user):
-    full_name = f"{(user.first_name or '').strip()} {(user.last_name or '').strip()}".strip()
-    return full_name or user.username
+def _attach_notification_target_urls(notifications):
+    task_ids = [
+        item.related_id
+        for item in notifications
+        if item.notification_type == Notification.Type.TASK_ASSIGNED
+        and item.related_model == 'Task'
+        and item.related_id
+    ]
+    tasks_by_id = {
+        task.id: task
+        for task in Task.objects.select_related('deal').filter(pk__in=task_ids)
+    }
+    for notification in notifications:
+        target_url = ''
+        if notification.notification_type == Notification.Type.TASK_ASSIGNED and notification.related_id:
+            task = tasks_by_id.get(notification.related_id)
+            if task and task.deal_id:
+                target_url = reverse('deal_detail', args=[task.deal_id])
+            else:
+                target_url = reverse('tasks')
+        notification.target_url = target_url
+    return notifications
 
 
 @login_required
 def home(request):
     today = timezone.localdate()
-    active_statuses = [Deal.Status.NEW, Deal.Status.QUALIFIED, Deal.Status.SENT_QUOTE, Deal.Status.CONTRACT, Deal.Status.PREPAYMENT, Deal.Status.PRODUCTION, Deal.Status.INSTALLATION]
-    my_active_deals = (
-        Deal.objects.select_related('client')
-        .filter(assigned_manager=request.user, status__in=active_statuses)
-        .order_by('-updated_at')
-    )
+    active_statuses = [
+        Deal.Status.NEW,
+        Deal.Status.QUALIFIED,
+        Deal.Status.SENT_QUOTE,
+        Deal.Status.CONTRACT,
+        Deal.Status.PREPAYMENT,
+        Deal.Status.PRODUCTION,
+        Deal.Status.INSTALLATION,
+    ]
+    active_deals_count = Deal.objects.filter(status__in=active_statuses).count()
+
     urgent_tasks = (
         Task.objects.select_related('deal')
         .filter(assignee=request.user, is_done=False, due_date__lte=today)
         .order_by('due_date', 'created_at')
     )
-    archicad_updates = (
-        ProjectVersion.objects.select_related('deal', 'created_by')
-        .filter(source=ProjectVersion.Source.ARCHICAD)
-        .order_by('-created_at')[:10]
-    )
-    stale_deals = (
-        Deal.objects.select_related('client', 'assigned_manager')
-        .exclude(status__in=[Deal.Status.DELIVERED, Deal.Status.LOST])
-        .filter(updated_at__lt=timezone.now() - timedelta(days=7))
-        .order_by('updated_at')
-    )
-    for deal in stale_deals:
-        deal.silent_days = max((today - deal.updated_at.date()).days, 0)
+
     new_leads = (
         Deal.objects.select_related('client')
-        .filter(assigned_manager__isnull=True, status__in=[Deal.Status.ORPHAN, Deal.Status.NEW])
+        .filter(status__in=[Deal.Status.ORPHAN, Deal.Status.NEW])
         .order_by('-created_at')
     )
 
-    dialog_with_raw = request.GET.get('dialog_with', '').strip()
-    dialog_user = None
-    if dialog_with_raw.isdigit():
-        dialog_user = request.user.__class__.objects.filter(pk=int(dialog_with_raw), is_active=True).exclude(pk=request.user.pk).first()
-
-    all_dialog_messages = list(
-        DirectMessage.objects.select_related('sender', 'recipient')
-        .filter(Q(sender=request.user) | Q(recipient=request.user))
-        .order_by('-created_at')[:500]
+    priority_rank = Case(
+        When(priority=ServiceRequest.Priority.URGENT, then=Value(0)),
+        When(priority=ServiceRequest.Priority.HIGH, then=Value(1)),
+        When(priority=ServiceRequest.Priority.NORMAL, then=Value(2)),
+        default=Value(3),
+        output_field=IntegerField(),
     )
-    dialog_map = {}
-    for msg in all_dialog_messages:
-        counterpart = msg.recipient if msg.sender_id == request.user.id else msg.sender
-        item = dialog_map.get(counterpart.id)
-        if item is None:
-            dialog_map[counterpart.id] = {
-                'user': counterpart,
-                'display_name': _display_name(counterpart),
-                'last_message': msg.body or (f'Файл: {msg.attachment.name.split("/")[-1]}' if msg.attachment else ''),
-                'last_created_at': msg.created_at,
-                'unread_count': 0,
-            }
-        if msg.recipient_id == request.user.id and msg.read_at is None:
-            dialog_map[counterpart.id]['unread_count'] += 1
-    dialogs = sorted(dialog_map.values(), key=lambda x: x['last_created_at'], reverse=True)
-    existing_dialog_user_ids = {item['user'].id for item in dialogs}
-    for user_item in request.user.__class__.objects.filter(is_active=True).exclude(pk=request.user.pk):
-        if user_item.id in existing_dialog_user_ids:
-            continue
-        dialogs.append(
-            {
-                'user': user_item,
-                'display_name': _display_name(user_item),
-                'last_message': '',
-                'last_created_at': datetime(1970, 1, 1, tzinfo=timezone.get_current_timezone()),
-                'unread_count': 0,
-            }
-        )
-    dialogs = sorted(dialogs, key=lambda x: x['last_created_at'], reverse=True)
+    open_service_requests = (
+        ServiceRequest.objects.select_related('deal', 'client', 'assignee')
+        .filter(status__in=ServiceRequest.OPEN_STATUSES)
+        .annotate(priority_rank=priority_rank)
+        .order_by('priority_rank', '-created_at')
+    )
+    open_service_count = open_service_requests.count()
 
-    if dialog_user is None and dialogs:
-        dialog_user = dialogs[0]['user']
-
-    dialog_messages = []
-    if dialog_user is not None:
-        incoming_message_ids = list(
-            DirectMessage.objects.filter(
-                sender=dialog_user,
-                recipient=request.user,
-            ).values_list('id', flat=True)
+    latest_notifications = _attach_notification_target_urls(
+        list(
+            Notification.objects.select_related('actor')
+            .filter(user=request.user)
+            .order_by('-created_at')[:20]
         )
-        DirectMessage.objects.filter(
-            sender=dialog_user,
-            recipient=request.user,
-            read_at__isnull=True,
-        ).update(read_at=timezone.now())
-        if incoming_message_ids:
-            Notification.objects.filter(
-                user=request.user,
-                notification_type=Notification.Type.MESSAGE_RECEIVED,
-                related_model='DirectMessage',
-                related_id__in=incoming_message_ids,
-                is_read=False,
-            ).update(is_read=True, read_at=timezone.now())
-        dialog_messages = (
-            DirectMessage.objects.select_related('sender', 'recipient')
-            .filter(
-                Q(sender=request.user, recipient=dialog_user)
-                | Q(sender=dialog_user, recipient=request.user)
-            )
-            .order_by('created_at')[:200]
-        )
+    )
 
     context = {
-        'my_active_deals': my_active_deals,
+        'active_deals_count': active_deals_count,
         'urgent_tasks': urgent_tasks,
-        'archicad_updates': archicad_updates,
-        'stale_deals': stale_deals,
         'new_leads': new_leads,
+        'open_service_requests': open_service_requests[:8],
+        'open_service_count': open_service_count,
+        'activity_feed': build_activity_feed(limit=30),
         'lead_form': DashboardLeadForm(),
         'is_leadership': is_leadership(request.user),
+        'is_file_only_role': is_file_only_role(request.user),
         'today': today,
-        'message_form': DashboardMessageForm(current_user=request.user, initial={'recipient': dialog_user.id if dialog_user else None}),
-        'dialogs': dialogs,
-        'dialog_user': dialog_user,
-        'dialog_messages': dialog_messages,
-        'latest_notifications': Notification.objects.select_related('actor').filter(user=request.user)[:10],
+        'latest_notifications': latest_notifications,
     }
-
-    if is_leadership(request.user):
-        context['pipeline_total'] = Deal.objects.exclude(status__in=[Deal.Status.DELIVERED, Deal.Status.LOST]).count()
-        context['stale_deals_count'] = Deal.objects.filter(updated_at__lt=timezone.now() - timedelta(days=7)).count()
-        user_model = get_user_model()
-        context['employees'] = user_model.objects.order_by('username')
-        context['employee_create_form'] = EmployeeCreateForm()
-
     return render(request, 'home.html', context)
+
+
+@login_required
+def cabinet(request):
+    from deals.services import telegram_link
+
+    profile = telegram_link.get_profile(request.user)
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'telegram_code':
+            telegram_link.issue_code(request.user)
+        elif action == 'telegram_unlink':
+            telegram_link.unlink(request.user)
+        return redirect('cabinet')
+
+    from django.conf import settings as dj_settings
+
+    code_valid = bool(
+        profile.link_code
+        and profile.link_code_expires_at
+        and profile.link_code_expires_at > timezone.now()
+    )
+    return render(request, 'cabinet.html', {
+        'tg_profile': profile,
+        'tg_code_valid': code_valid,
+        'tg_bot_configured': bool(getattr(dj_settings, 'TELEGRAM_BOT_TOKEN', '')),
+    })
 
 
 @login_required
@@ -214,7 +195,7 @@ def dashboard_message_send(request):
             },
             request=request,
         )
-        return redirect(f"{reverse('home')}?dialog_with={form.cleaned_data['recipient'].id}")
+        return redirect('home')
     return redirect('home')
 
 
@@ -754,7 +735,12 @@ class DealDetailView(LoginRequiredMixin, DetailView):
                 version=draft_version,
             )
 
-        context['versions'] = self.object.versions.all()
+        versions_list = list(
+            ProjectVersion.objects.filter(deal=self.object)
+            .select_related('created_by')
+            .order_by('-version_number')
+        )
+        context['versions'] = versions_list
         context['tasks_for_deal'] = self.object.tasks.all()
         context['status_choices'] = Deal.Status.choices
         context['manager_choices'] = self.request.user.__class__.objects.filter(role='manager').order_by('username')
@@ -780,6 +766,8 @@ class DealDetailView(LoginRequiredMixin, DetailView):
         context['client_portal_url'] = self.request.build_absolute_uri(
             reverse('client_portal_entry', kwargs={'deal_id': self.object.id})
         )
+        context.update(build_approvals_context(self.object))
+        context.update(build_design_context(self.object))
         context['deal_project_files_for_attach'] = (
             ProjectFile.objects.filter(deal=self.object, is_archived=False).order_by('-updated_at')[:200]
         )
@@ -831,3 +819,4 @@ class DealDetailView(LoginRequiredMixin, DetailView):
         if parsed is None:
             return None
         return parsed.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+

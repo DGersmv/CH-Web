@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="mb-0">{% if is_edit %}Обращение SR-{{ sr.number }}{% else %}Новое обращение{% endif %}</h1>
+        <a href="{% if is_edit %}{% url 'service_detail' sr.id %}{% else %}{% url 'service_list' %}{% endif %}" class="btn btn-outline-secondary btn-sm">Отмена</a>
+    </div>
+
+    <form method="post" class="card">
+        {% csrf_token %}
+        <div class="card-body">
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+            {% endif %}
+            <div class="row g-3">
+                <div class="col-md-4">{{ form.kind.label_tag }}{{ form.kind }}</div>
+                <div class="col-md-4">{{ form.priority.label_tag }}{{ form.priority }}</div>
+                <div class="col-md-4">{{ form.source.label_tag }}{{ form.source }}</div>
+
+                <div class="col-12">
+                    {{ form.title.label_tag }}{{ form.title }}
+                    {% for e in form.title.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+                </div>
+                <div class="col-12">{{ form.description.label_tag }}{{ form.description }}</div>
+
+                <div class="col-md-6">{{ form.deal.label_tag }}{{ form.deal }}</div>
+                <div class="col-md-6">{{ form.client.label_tag }}{{ form.client }}</div>
+
+                <div class="col-md-4">{{ form.reporter_name.label_tag }}{{ form.reporter_name }}</div>
+                <div class="col-md-4">{{ form.reporter_phone.label_tag }}{{ form.reporter_phone }}</div>
+                <div class="col-md-4">{{ form.assignee.label_tag }}{{ form.assignee }}</div>
+            </div>
+        </div>
+        <div class="card-footer d-flex justify-content-end gap-2">
+            <button type="submit" class="btn btn-primary">{% if is_edit %}Сохранить{% else %}Создать обращение{% endif %}</button>
+        </div>
+    </form>
+{% endblock %}

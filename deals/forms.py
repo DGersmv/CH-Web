@@ -15,6 +15,7 @@ from .models import (
     DealBathroom,
     DealBathroomLine,
     ProjectVersion,
+    ServiceRequest,
     build_project_code_from_parts,
     normalize_project_code,
 )
@@ -78,7 +79,6 @@ class DealCreateForm(forms.ModelForm):
             'code_site_name',
             'project_code',
             'client',
-            'assigned_manager',
         ]
         widgets = {
             'module_count': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'max': 15}),
@@ -98,7 +98,6 @@ class DealCreateForm(forms.ModelForm):
             ),
             'project_code': forms.TextInput(attrs={'class': 'form-control', 'autocomplete': 'off'}),
             'client': forms.Select(attrs={'class': 'form-select'}),
-            'assigned_manager': forms.Select(attrs={'class': 'form-select'}),
         }
         labels = {
             'module_count': 'Количество модулей',
@@ -110,10 +109,8 @@ class DealCreateForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['client'].required = False
-        self.fields['assigned_manager'].required = False
         self.fields['project_code'].required = False
         self.fields['client'].queryset = Client.objects.order_by('company_name', 'last_name', 'first_name', 'middle_name')
-        self.fields['assigned_manager'].queryset = get_user_model().objects.filter(role='manager').order_by('username')
 
     def clean(self):
         cleaned = super().clean()
@@ -459,6 +456,65 @@ AdditionalOptionLineFormSet = inlineformset_factory(
     extra=0,
     can_delete=False,
 )
+
+
+class ServiceRequestForm(forms.ModelForm):
+    """Заведение / редактирование обращения в сервис."""
+
+    class Meta:
+        model = ServiceRequest
+        fields = [
+            'kind',
+            'priority',
+            'source',
+            'title',
+            'description',
+            'deal',
+            'client',
+            'reporter_name',
+            'reporter_phone',
+            'assignee',
+        ]
+        widgets = {
+            'kind': forms.Select(attrs={'class': 'form-select'}),
+            'priority': forms.Select(attrs={'class': 'form-select'}),
+            'source': forms.Select(attrs={'class': 'form-select'}),
+            'title': forms.TextInput(attrs={'class': 'form-control', 'autocomplete': 'off',
+                                            'placeholder': 'Напр. Скрипит пол в спальне'}),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 4,
+                                                 'placeholder': 'Что случилось, где, когда заметили'}),
+            'deal': forms.Select(attrs={'class': 'form-select'}),
+            'client': forms.Select(attrs={'class': 'form-select'}),
+            'reporter_name': forms.TextInput(attrs={'class': 'form-control', 'autocomplete': 'off'}),
+            'reporter_phone': forms.TextInput(attrs={'class': 'form-control', 'autocomplete': 'off',
+                                                     'placeholder': '+7'}),
+            'assignee': forms.Select(attrs={'class': 'form-select'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['deal'].required = False
+        self.fields['client'].required = False
+        self.fields['assignee'].required = False
+        self.fields['description'].required = False
+        self.fields['reporter_name'].required = False
+        self.fields['reporter_phone'].required = False
+        self.fields['deal'].queryset = Deal.objects.select_related('client').order_by('-updated_at')
+        self.fields['client'].queryset = Client.objects.order_by(
+            'company_name', 'last_name', 'first_name', 'middle_name'
+        )
+        self.fields['assignee'].queryset = get_user_model().objects.filter(is_active=True).order_by('username')
+        self.fields['deal'].empty_label = '— не привязано —'
+        self.fields['client'].empty_label = '— не выбран —'
+        self.fields['assignee'].empty_label = '— не назначен —'
+
+
+class ServiceRequestCommentForm(forms.Form):
+    text = forms.CharField(
+        label='Комментарий',
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2,
+                                     'placeholder': 'Что сделано / договорённости'}),
+    )
 
 
 class DealFileUploadForm(forms.Form):

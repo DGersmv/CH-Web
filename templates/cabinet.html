@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="mb-4">
+        <h1 class="mb-2">Личный кабинет</h1>
+        <p class="text-muted mb-0">Скоро здесь появятся заметки и личные файлы.</p>
+    </div>
+
+    <div class="card mb-4" style="max-width: 560px;">
+        <div class="card-body">
+            <h2 class="h5 mb-3">Телеграм-бот диспетчерской</h2>
+            {% if not tg_bot_configured %}
+                <p class="text-muted mb-0">Бот пока не настроен администратором.</p>
+            {% elif tg_profile.is_linked %}
+                <p class="mb-2">
+                    Привязан аккаунт
+                    <strong>{% if tg_profile.telegram_username %}@{{ tg_profile.telegram_username }}{% else %}id {{ tg_profile.telegram_user_id }}{% endif %}</strong>.
+                </p>
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="telegram_unlink">
+                    <button class="btn btn-outline-danger btn-sm" type="submit">Отвязать</button>
+                </form>
+            {% else %}
+                {% if tg_code_valid %}
+                    <p class="mb-1">Отправьте боту в личные сообщения:</p>
+                    <pre class="bg-light p-2 rounded mb-2">/start {{ tg_profile.link_code }}</pre>
+                    <p class="text-muted small mb-2">Код действует 15 минут.</p>
+                {% endif %}
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="telegram_code">
+                    <button class="btn btn-primary btn-sm" type="submit">
+                        {% if tg_code_valid %}Новый код{% else %}Получить код привязки{% endif %}
+                    </button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <a href="{% url 'home' %}" class="btn btn-outline-secondary btn-sm">← На главную</a>
+{% endblock %}

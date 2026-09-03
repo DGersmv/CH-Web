@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "obshaya-rabochaya": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "http://192.168.200.20:7861/mcp",
+        "--allow-http"
+      ]
+    }
+  }
+}

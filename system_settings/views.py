@@ -1,5 +1,6 @@
 from urllib.parse import urlencode
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Q
@@ -355,6 +356,8 @@ def settings_integrations(request):
             'plugin_endpoint': request.build_absolute_uri(
                 reverse('plugin_project_versions_create'),
             ),
+            'umnik_url': (getattr(settings, 'UMNIK_URL', '') or '').strip(),
+            'umnik_configured': bool((getattr(settings, 'UMNIK_URL', '') or '').strip()),
             'domain_events': TOP_DOMAIN_EVENTS,
             'platform_jobs': PlatformJob.objects.order_by('-created_at')[:20],
         },
