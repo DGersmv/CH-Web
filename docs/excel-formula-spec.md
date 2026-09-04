@@ -48,3 +48,9 @@
 - `calc_schema_version = excel-v1`
 - Сохраняется в `ProjectVersion.frozen_data`.
 
+## Связанные ограничения движка
+
+- Базовые цены строк C4…C43 зашиты в `deals.services.calculation_engine.calculate_config`, не читаются из `catalog.CostItem`.
+- Блок `additional_options` считается отдельно и **не** входит в `totals.subtotal` / `with_margin`. Карточка сделки складывает его только в `total_for_customer`.
+- Как draft сохраняется и чем recalc отличается от save: [`configurator-draft-workflow.md`](configurator-draft-workflow.md).
+

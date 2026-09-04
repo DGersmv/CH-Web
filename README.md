@@ -19,7 +19,7 @@ docker compose up -d
 docker compose exec app python manage.py migrate
 docker compose restart app
 
-Приложение доступно на `http://localhost:8001`, Postgres проброшен на `localhost:5433`.
+Compose поднимает три сервиса: `db` (Postgres на `localhost:5433`), `redis` (`localhost:6379`, нужен Channels/WebSocket), `app` (Daphne). Приложение доступно на `http://localhost:8001`.
 
 Если меняли Python-код или `urls.py`, а интерфейс как будто старый, перезапустите приложение (Daphne сам код не подхватывает):
 
@@ -57,12 +57,15 @@ docker compose exec db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select cou
 curl -I http://localhost:8001/static/img/logo.jpg
 ```
 
-Если UI отображается без стилей, проверь доступ сервера к CDN:
+Bootstrap и HTMX отдаются **локально** из `static/vendor/` (не с CDN). Если UI без стилей:
 
 ```bash
-curl -I https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css
-curl -I https://unpkg.com/htmx.org@1.9.12
+curl -I http://localhost:8001/static/vendor/bootstrap/bootstrap.min.css
+curl -I http://localhost:8001/static/vendor/htmx/htmx.min.js
+curl -I http://localhost:8001/static/img/logo.jpg
 ```
+
+Если страница открывается, а колокольчик уведомлений молчит — проверь, что контейнер `redis` healthy и `REDIS_URL=redis://redis:6379/0`.
 
 ## Миграции
 
@@ -90,9 +93,19 @@ docker compose exec app python manage.py createsuperuser
 
 ## Файловое хранилище
 
-- По умолчанию проект хранит файлы в `crm_files` внутри корня репозитория.
+- По умолчанию проект хранит файлы сделки в `crm_files` внутри корня репозитория.
 - Переопределить корень можно через переменную окружения `CRM_FILES_ROOT`.
 - Файлы раскладываются по структуре клиент/проект/источник (заказчик или проектировщик), пути в БД сохраняются относительными.
+- Вложения задач копируются в `media/task_attachments/` (`MEDIA_ROOT`), это отдельное дерево от `CRM_FILES_ROOT`.
+
+## Документация подсистем
+
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — целевая архитектура и расхождения с кодом.
+- [`docs/excel-formula-spec.md`](docs/excel-formula-spec.md) — формулы сметы Excel 1:1.
+- [`docs/configurator-draft-workflow.md`](docs/configurator-draft-workflow.md) — draft конфигуратора, save vs recalc, смета.
+- [`docs/tasks-workflow.md`](docs/tasks-workflow.md) — задачи на сделке и `/tasks/`.
+- [`docs/plugin-api-contract.md`](docs/plugin-api-contract.md) — контракт ArchiCAD plugin.
+- [`docs/ch-crm-platform-blueprint.md`](docs/ch-crm-platform-blueprint.md) — platform settings, jobs, events.
 
 ## Состояние проекта
 
