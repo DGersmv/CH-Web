@@ -3,7 +3,7 @@
 ## Domain vs Platform
 
 ### Domain modules
-- `deals`: сделки, версии проекта, клиентский портал, файлы проекта, сметы, конфигуратор.
+- `deals`: сделки, версии проекта, клиентский портал, файлы проекта, сметы, конфигуратор, сервисные обращения (`ServiceRequest`).
 - `clients`: карточки клиентов и клиентские данные.
 - `catalog`: справочник расчётных позиций и опций.
 - `tasks`: задачи по сделкам и внутренние вложения.
@@ -44,6 +44,9 @@
 4. `task.created`
 5. `client_message.sent`
 
+Уже пишутся в audit, но не входят в этот roadmap-список:
+`service_request.created`, `service_request.status_changed`, `deal.deleted`.
+
 Они уже публикуются через `system_settings.events.record_domain_event()` и могут стать источником:
 - outbound webhooks
 - автоматических уведомлений
@@ -72,7 +75,9 @@
 - Endpoint: `POST /api/plugin/project-versions/`
 - Поддерживается аутентификация через `IntegrationTokenAuthentication` и DRF tokens.
 - Управление токенами доступно в `/settings/integrations/`.
-- Outbound к умнику: `GET {UMNIK_URL}/crm/lookup` — комнаты и м² по сделке. Настройки: `UMNIK_URL`, `UMNIK_TOKEN` в `.env`.
+- Outbound к умнику: `GET {UMNIK_URL}/crm/lookup` и `POST {UMNIK_URL}/crm/chat`. Настройки: `UMNIK_URL`, `UMNIK_TOKEN` в `.env`.
+- Inbound от умника: `/api/umnik/me/`, `/api/umnik/deals/` (list/lookup/GET/PATCH/DELETE), `/config/`, `/cost/`. Контракт: [umnik-crm-api.md](umnik-crm-api.md).
+- Сервис после сдачи: меню `/service/`, не вкладка сделки. Runbook: [service-requests.md](service-requests.md).
 
 ### Near-term roadmap
 1. Добавить отдельные inbound endpoints по типам интеграций.

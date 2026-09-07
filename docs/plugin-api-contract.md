@@ -3,6 +3,8 @@
 Этот документ фиксирует контракт обмена между `CH-Archicad` и `CH-Web`.
 Главный принцип: контракт хранится в веб-репозитории и является источником правды.
 
+Не путать с входящим API умника (`/api/umnik/…`, Bearer `UMNIK_TOKEN`): [umnik-crm-api.md](umnik-crm-api.md).
+
 ## Endpoint
 
 - Method: `POST`
