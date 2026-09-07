@@ -57,11 +57,12 @@ docker compose exec db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select cou
 curl -I http://localhost:8001/static/img/logo.jpg
 ```
 
-Если UI отображается без стилей, проверь доступ сервера к CDN:
+Если UI отображается без стилей, CSS/JS отдаются с диска (`static/vendor/`), не с CDN:
 
 ```bash
-curl -I https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css
-curl -I https://unpkg.com/htmx.org@1.9.12
+curl -I http://localhost:8001/static/vendor/bootstrap/bootstrap.min.css
+curl -I http://localhost:8001/static/vendor/htmx/htmx.min.js
+docker compose exec app python manage.py collectstatic --noinput
 ```
 
 ## Миграции
@@ -94,6 +95,17 @@ docker compose exec app python manage.py createsuperuser
 - Переопределить корень можно через переменную окружения `CRM_FILES_ROOT`.
 - Файлы раскладываются по структуре клиент/проект/источник (заказчик или проектировщик), пути в БД сохраняются относительными.
 
+## Документация
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — контекст для разработки (роли, модели, умник).
+- [docs/service-requests.md](docs/service-requests.md) — сервис / рекламации (`/service/`).
+- [docs/umnik-crm-api.md](docs/umnik-crm-api.md) — входящий API умника и чат в CRM.
+- [docs/umnik-chat-attachments.md](docs/umnik-chat-attachments.md) — как умник получает файлы чата.
+- [docs/telegram-bot.md](docs/telegram-bot.md) — бот диспетчерской.
+- [docs/plugin-api-contract.md](docs/plugin-api-contract.md) — контракт ArchiCAD-плагина.
+- [docs/excel-formula-spec.md](docs/excel-formula-spec.md) — формулы сметы.
+- [docs/ch-crm-platform-blueprint.md](docs/ch-crm-platform-blueprint.md) — модули платформы.
+
 ## Состояние проекта
 
 Планируемая структура вкладок по этапам:
@@ -105,3 +117,7 @@ docker compose exec app python manage.py createsuperuser
 5. `Производство`
 6. `Монтаж / Установка`
 7. `Сдача клиенту`
+
+Отдельно от вкладок сделки: меню **Сервис** (`/service/`) — обращения после сдачи
+(гарантия, доработка, вопрос). Вкладка «Сервис / Рекламации» на карточке объекта
+пока заглушка. Подробности: [docs/service-requests.md](docs/service-requests.md).

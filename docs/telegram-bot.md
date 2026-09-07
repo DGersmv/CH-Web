@@ -36,6 +36,9 @@
   одним запросом.
 - Если умник кладёт файл в чат (`ATTACH_FILE:` / attach_file), бот шлёт его
   в группу как документ Telegram, а не только текстом.
+- Бот **не** создаёт `ServiceRequest`. Источник `telegram` на обращении —
+  ручная метка в форме `/service/`. См. [service-requests.md](service-requests.md).
+- Сделки умник меняет через входящий API CRM, не через бота: [umnik-crm-api.md](umnik-crm-api.md).
 
 ## Файлы
 
