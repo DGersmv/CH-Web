@@ -96,12 +96,28 @@ docker compose exec app python manage.py createsuperuser
 
 ## Состояние проекта
 
-Планируемая структура вкладок по этапам:
+Вкладки на карточке сделки (`/deals/<id>/`), порядок как в UI:
 
-1. `Переговоры и КП` — объединяет лид / квалификацию и переговоры с коммерческим предложением
-2. `Согласования`
-3. `Проектирование`
-4. `Договор и оплата`
-5. `Производство`
-6. `Монтаж / Установка`
-7. `Сдача клиенту`
+1. `Переговоры и КП` — живая: клиент, договорная цена, файлы, задачи
+2. `Согласования` — живой чек-лист и гейт этапа (не меняет `Deal.status`)
+3. `Договор и оплата` — заглушка
+4. `Проектирование` — живой чек-лист разделов РД и гейт
+5. `Производство` — заглушка
+6. `Монтаж / Установка` — заглушка
+7. `Сдача клиенту` — заглушка
+8. `Сервис / Рекламации` — заглушка на карточке; рабочий список — `/service/`
+
+Прямая ссылка на вкладку: `/deals/<id>/#stage-approvals` или `#stage-design`.
+Операционный разбор чек-листов, гейтов и файлов: [docs/deal-approvals-and-design.md](docs/deal-approvals-and-design.md).
+
+## Документация
+
+| Документ | О чём |
+|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Контекст системы для разработки |
+| [docs/deal-approvals-and-design.md](docs/deal-approvals-and-design.md) | Согласования, проектирование, электрика |
+| [docs/telegram-bot.md](docs/telegram-bot.md) | Телеграм-бот диспетчерской |
+| [docs/umnik-chat-attachments.md](docs/umnik-chat-attachments.md) | Вложения чата умника |
+| [docs/plugin-api-contract.md](docs/plugin-api-contract.md) | Контракт ArchiCAD-плагина |
+| [docs/excel-formula-spec.md](docs/excel-formula-spec.md) | Формулы сметы (модуль сейчас выключен) |
+| [docs/ch-crm-platform-blueprint.md](docs/ch-crm-platform-blueprint.md) | Настройки, jobs, события платформы |
