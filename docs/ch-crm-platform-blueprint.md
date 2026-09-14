@@ -3,7 +3,7 @@
 ## Domain vs Platform
 
 ### Domain modules
-- `deals`: сделки, версии проекта, клиентский портал, файлы проекта, сметы, конфигуратор.
+- `deals`: сделки, версии проекта, чек-листы согласований и проектирования, клиентский портал, файлы проекта, сметы, конфигуратор.
 - `clients`: карточки клиентов и клиентские данные.
 - `catalog`: справочник расчётных позиций и опций.
 - `tasks`: задачи по сделкам и внутренние вложения.
@@ -43,6 +43,12 @@
 3. `project_file.uploaded`
 4. `task.created`
 5. `client_message.sent`
+
+Уже пишутся, но **не** входят в `TOP_DOMAIN_EVENTS` (и follow-up job не ставится):
+`deal.approvals_passed`, `deal.design_passed`, `deal.approval_changed`,
+`deal.design_section_changed`, `project_version.status_changed`.
+На ленту главной из них попадают только `deal.approvals_passed` и `deal.design_passed`.
+Операционный разбор: [deal-approvals-and-design.md](deal-approvals-and-design.md).
 
 Они уже публикуются через `system_settings.events.record_domain_event()` и могут стать источником:
 - outbound webhooks
