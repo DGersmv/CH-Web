@@ -22,6 +22,9 @@
             {% endif %}
             <div class="small text-muted">
                 Дата постановки: {{ task.created_at|date:"d.m.Y" }} | Дата выполнения: {{ task.due_date|date:"d.m.Y" }}
+                {% if task.requested_by %}
+                    | Кто поставил: {{ task.requested_by.username }}
+                {% endif %}
             </div>
             {% if task.attachment or task.project_file %}
                 <div>

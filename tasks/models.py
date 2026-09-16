@@ -33,6 +33,14 @@ class Task(models.Model):
     due_date = models.DateField()
     is_done = models.BooleanField(default=False)
     completed_at = models.DateTimeField(null=True, blank=True)
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='requested_tasks',
+        verbose_name='Кто поставил',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def mark_done(self):

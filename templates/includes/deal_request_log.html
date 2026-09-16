@@ -1,0 +1,17 @@
+<div class="card mb-3">
+    <div class="card-header">Кто просил</div>
+    <ul class="list-group list-group-flush">
+        {% for row in instructions %}
+            <li class="list-group-item py-2 small">
+                <div class="d-flex justify-content-between gap-2">
+                    <strong>{{ row.requested_by_label|default:"—" }}</strong>
+                    <span class="text-muted">{{ row.requested_at|date:"d.m.Y H:i" }}</span>
+                </div>
+                <div class="text-muted">{{ row.get_source_display }}</div>
+                {% if row.text %}<div class="mt-1">{{ row.text }}</div>{% endif %}
+            </li>
+        {% empty %}
+            <li class="list-group-item py-2 small text-muted">Пока нет: кто просил и когда.</li>
+        {% endfor %}
+    </ul>
+</div>

@@ -123,42 +123,6 @@ def _ensure_latest_version_for_log(deal, user):
 
 @login_required
 @require_POST
-def update_deal_manager(request, deal_id):
-    if is_file_only_role(request.user):
-        return HttpResponseForbidden('Not allowed')
-    deal = get_object_or_404(Deal, pk=deal_id)
-    manager_id = request.POST.get('assigned_manager', '').strip()
-    manager = None
-    if manager_id:
-        if not manager_id.isdigit():
-            return HttpResponseBadRequest('Invalid manager id')
-        manager = request.user.__class__.objects.filter(id=int(manager_id), role='manager').first()
-        if manager is None:
-            return HttpResponseBadRequest('Invalid manager')
-
-    old_manager = deal.assigned_manager.username if deal.assigned_manager else None
-    new_manager = manager.username if manager else None
-    if deal.assigned_manager_id != (manager.id if manager else None):
-        deal.assigned_manager = manager
-        deal.save(update_fields=['assigned_manager', 'updated_at'])
-        ChangeLog.objects.create(
-            project_version=_ensure_latest_version_for_log(deal, request.user),
-            changed_by=request.user,
-            field_path='assigned_manager',
-            old_value={'value': old_manager},
-            new_value={'value': new_manager},
-        )
-
-    manager_choices = request.user.__class__.objects.filter(role='manager').order_by('username')
-    return render(
-        request,
-        'includes/deal_manager_block.html',
-        {'deal': deal, 'manager_choices': manager_choices},
-    )
-
-
-@login_required
-@require_POST
 def update_deal_margin(request, deal_id):
     if is_file_only_role(request.user):
         return HttpResponseForbidden('Not allowed')
@@ -327,6 +291,16 @@ def umnik_chat_thread(request, thread_id):
         for item in thread.messages.prefetch_related('attachments').all()
     ]
     return JsonResponse({'ok': True, 'thread': umnik_chat_store.serialize_thread(thread), 'messages': messages})
+
+
+@login_required
+@require_POST
+def umnik_chat_delete(request, thread_id):
+    if not can_use_umnik_chat(request.user):
+        return _umnik_denied()
+    if not umnik_chat_store.delete_thread(request.user, thread_id):
+        return JsonResponse({'ok': False, 'error': 'not_found'}, status=404)
+    return JsonResponse({'ok': True})
 
 
 def _umnik_thread_for_request(request, payload):
@@ -1486,20 +1460,6 @@ def save_deal_electrical(request, deal_id):
     return redirect(reverse('deal_electrical_page', kwargs={'deal_id': deal.id}) + '?saved=1')
 
 
-@login_required
-@require_POST
-def claim_lead(request, deal_id):
-    deal = get_object_or_404(Deal, pk=deal_id, assigned_manager__isnull=True, status__in=[Deal.Status.ORPHAN, Deal.Status.NEW])
-    deal.assigned_manager = request.user
-    deal.save(update_fields=['assigned_manager', 'updated_at'])
-    new_leads = (
-        Deal.objects.select_related('client')
-        .filter(assigned_manager__isnull=True, status__in=[Deal.Status.ORPHAN, Deal.Status.NEW])
-        .order_by('-created_at')
-    )
-    return render(request, 'includes/dashboard_leads_block.html', {'new_leads': new_leads})
-
-
 CLIENT_PORTAL_COOKIE = 'client_portal_token'
 
 
@@ -1992,6 +1952,7 @@ def deal_approval_detail(request, deal_id, slug):
             'attachments': attachments,
             'file_error': request.GET.get('file_error') == '1',
             'saved': request.GET.get('saved') == '1',
+            'instructions': list(approval.instructions.select_related('requested_by').all()[:30]),
         },
     )
 
@@ -2019,6 +1980,7 @@ def save_deal_approval_detail(request, deal_id, slug):
         version = deal.versions.filter(pk=int(raw_version)).first()
 
     old_status = approval.status
+    old_notes = approval.notes
     approval.status = new_status
     approval.comment = (request.POST.get('comment') or '').strip()
     approval.notes = (request.POST.get('notes') or '').strip()
@@ -2051,6 +2013,18 @@ def save_deal_approval_detail(request, deal_id, slug):
             entity_id=approval.id,
             payload={'deal_id': deal.id, 'slug': slug, 'status': new_status},
             request=request,
+        )
+    if approval.notes != old_notes and approval.notes:
+        from deals.models import DealInstruction
+        from deals.services.instructions import record_instruction
+
+        record_instruction(
+            deal=deal,
+            user=request.user,
+            text=approval.notes,
+            kind=DealInstruction.Kind.APPROVAL,
+            source=DealInstruction.Source.FORM,
+            approval=approval,
         )
     return redirect(
         reverse('deal_approval_detail', kwargs={'deal_id': deal.id, 'slug': slug}) + '?saved=1'
@@ -2414,7 +2388,7 @@ _DESIGN_RELATED_PAGES = {
     'finishing': [('Смета и конфигуратор', 'deal_cost_summary_page')],
     'spec': [('Смета и конфигуратор', 'deal_cost_summary_page')],
     'electrical': [('Электрика — параметры проекта', 'deal_electrical_page')],
-    'plumbing': [('Комплектация санузлов', 'deal_bathrooms_page')],
+    'ov_vk': [('Комплектация санузлов', 'deal_bathrooms_page')],
 }
 
 
@@ -2464,6 +2438,7 @@ def deal_design_section_detail(request, deal_id, slug):
             'attachments': attachments,
             'file_error': request.GET.get('file_error') == '1',
             'saved': request.GET.get('saved') == '1',
+            'instructions': list(section.instructions.select_related('requested_by').all()[:30]),
         },
     )
 
@@ -2491,6 +2466,7 @@ def save_deal_design_section_detail(request, deal_id, slug):
         version = deal.versions.filter(pk=int(raw_version)).first()
 
     old_status = section.status
+    old_notes = section.notes
     section.status = new_status
     section.comment = (request.POST.get('comment') or '').strip()
     section.notes = (request.POST.get('notes') or '').strip()
@@ -2518,6 +2494,18 @@ def save_deal_design_section_detail(request, deal_id, slug):
             entity_id=section.id,
             payload={'deal_id': deal.id, 'slug': slug, 'status': new_status},
             request=request,
+        )
+    if section.notes != old_notes and section.notes:
+        from deals.models import DealInstruction
+        from deals.services.instructions import record_instruction
+
+        record_instruction(
+            deal=deal,
+            user=request.user,
+            text=section.notes,
+            kind=DealInstruction.Kind.DESIGN,
+            source=DealInstruction.Source.FORM,
+            design_section=section,
         )
     return redirect(
         reverse('deal_design_section_detail', kwargs={'deal_id': deal.id, 'slug': slug}) + '?saved=1'

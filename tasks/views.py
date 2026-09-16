@@ -106,8 +106,21 @@ def create_task_for_deal(request, deal_id):
             task.deal = deal
             if task.assignee is None:
                 task.assignee = request.user
+            if task.requested_by_id is None:
+                task.requested_by = request.user
             task.save()
             _copy_project_file_to_task_attachment(task)
+            from deals.models import DealInstruction
+            from deals.services.instructions import record_instruction
+
+            record_instruction(
+                deal=deal,
+                user=request.user,
+                text=task.title,
+                kind=DealInstruction.Kind.PRODUCTION,
+                source=DealInstruction.Source.TASK,
+                task=task,
+            )
             if task.assignee_id:
                 create_notification(
                     user=task.assignee,
@@ -130,7 +143,7 @@ def create_task_for_deal(request, deal_id):
                 },
                 request=request,
             )
-            tasks_for_deal = deal.tasks.select_related('assignee').order_by('is_done', 'due_date')
+            tasks_for_deal = deal.tasks.select_related('assignee', 'requested_by').order_by('is_done', 'due_date')
             response = render(
                 request,
                 'includes/deal_tasks_block.html',

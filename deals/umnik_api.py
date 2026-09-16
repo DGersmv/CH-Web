@@ -25,7 +25,9 @@ def _actor(request):
     header = request.META.get('HTTP_AUTHORIZATION', '')
     if not expected or header != f'Bearer {expected}':
         return None
-    username = (request.META.get('HTTP_X_UMNIK_ACTOR') or 'admin').strip()
+    username = (request.META.get('HTTP_X_UMNIK_ACTOR') or '').strip()
+    if not username:
+        return None
     return get_user_model().objects.filter(username=username, is_active=True).first()
 
 
@@ -135,5 +137,33 @@ def umnik_deal_cost(request, deal_id):
     if deal is None:
         return JsonResponse({'ok': False, 'error': 'deal not found'}, status=404)
     result = umnik_actions.update_cost(deal, user, _json_body(request))
+    status = 200 if result.get('ok') else (403 if result.get('error') == 'forbidden' else 400)
+    return JsonResponse(result, status=status)
+
+
+@csrf_exempt
+@require_http_methods(['PATCH'])
+def umnik_deal_approval(request, deal_id):
+    user = _actor(request)
+    if user is None:
+        return _deny()
+    deal = umnik_actions.find_deal(deal_id=deal_id)
+    if deal is None:
+        return JsonResponse({'ok': False, 'error': 'deal not found'}, status=404)
+    result = umnik_actions.update_approval(deal, user, _json_body(request))
+    status = 200 if result.get('ok') else (403 if result.get('error') == 'forbidden' else 400)
+    return JsonResponse(result, status=status)
+
+
+@csrf_exempt
+@require_http_methods(['POST'])
+def umnik_deal_design_file(request, deal_id):
+    user = _actor(request)
+    if user is None:
+        return _deny()
+    deal = umnik_actions.find_deal(deal_id=deal_id)
+    if deal is None:
+        return JsonResponse({'ok': False, 'error': 'deal not found'}, status=404)
+    result = umnik_actions.attach_design_file(deal, user, _json_body(request))
     status = 200 if result.get('ok') else (403 if result.get('error') == 'forbidden' else 400)
     return JsonResponse(result, status=status)

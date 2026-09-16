@@ -81,20 +81,36 @@ def test_crm_ping_is_crm_not_archive():
     assert lookup_archive("  ") == {"ok": True, "query": "", "layouts": []}
 
 
+def test_crm_chat_refuses_empty_actor():
+    from crm_api import run_crm_chat
+
+    result = run_crm_chat({"message": "добавь в согласования фасад"})
+    assert not result["ok"]
+    assert result["error"] == "no_actor"
+
+
 def test_archive_tools_exclude_crm():
     from claude_cli import allowed_tools
 
     archive = allowed_tools(False, crm=False)
     assert "attach_file" in archive
     assert "crm_get_deal" not in archive
+    assert "crm_attach_design_file" not in archive
     assert "copy_to_crm" not in archive
     crm = allowed_tools(False, crm=True)
     assert "crm_get_deal" in crm
     assert "crm_delete_deal" in crm
+    assert "crm_attach_design_file" in crm
+    assert "crm_update_approval" in crm
+    assert "crm_update_approval" not in archive
     assert "copy_to_crm" in crm
     assert "Read" in crm
     assert "Write" in crm
     assert "Edit" in crm
+    assert "search_archive_project" in crm
+    assert "search_archive_project" in archive
+    assert "ask_local_qwen" in archive
+    assert "ask_local_qwen" in crm
 
 
 def test_crm_cli_bypasses_permissions_without_comma_tools():
@@ -182,3 +198,221 @@ def test_copy_to_crm_refuses_archive_mode():
 
     out = copy_to_crm(r"D:\Scan_Pdf\requirements.txt", r"D:\CH-CRM\from-umnik.txt")
     assert "только из чата CRM" in out
+
+
+def test_project_search_query_detects_archive_not_deal_delete():
+    from archive_search import archive_query, is_project_search_query
+
+    design = (
+        "Так давай сделаем вот что, В разделе Проектирование для каждого из проектов: "
+        "1) Объеденим разделы ОВ и ВК 2) Добавим раздел Навесы/Террасы"
+    )
+    hoz = "поищи все хозблоки какие у нас есть прокты"
+    assert not is_project_search_query(design)
+    assert not is_project_search_query(hoz)
+    assert not is_project_search_query("найди проект Кирилл Вышний волочек вроде")
+    assert not is_project_search_query("Васкелово планировка")
+    assert not is_project_search_query("5МД Кирилл Вышний Волочек")
+    assert not is_project_search_query("удали сделку 9МД Тест Ручное Создание")
+    assert not is_project_search_query("поставь статус Production")
+    assert is_project_search_query(
+        r"D:\Общая_Рабочая\Работы Валя\Кирилл Вышний Волочек посмотри что тут есть"
+    )
+    assert archive_query("найди проект Кирилл Вышний волочек вроде") == "кирилл вышний волочек"
+    assert archive_query("поищи еще раз проекты Кирилл Вышний волочек") == "кирилл вышний волочек"
+
+
+def test_folder_path_and_final_plan_stay_inside_project():
+    from archive_search import search_project
+    from pathlib import Path
+
+    folder = Path(r"D:\Общая_Рабочая\Работы Валя\Кирилл Вышний Волочек")
+    looked = search_project(
+        r"D:\Общая_Рабочая\Работы Валя\Кирилл Вышний Волочек посмотри что тут есть"
+    )
+    assert "Кирилл Вышний Волочек" in (looked.get("text") or "")
+    assert "2 Этажа" not in (looked.get("text") or "")
+    assert "Вишневка" not in (looked.get("text") or "")
+
+    final = search_project(
+        r"нет мне нужен финальный план из D:\Общая_Рабочая\Работы Валя\Кирилл Вышний Волочек"
+    )
+    text = final.get("text") or ""
+    assert "Кирилл Вышний Волочек" in text
+    assert "Вишневка" not in text
+    joined = " ".join(final.get("pdfs") or []).lower()
+    assert "планиров" in joined or "итог" in joined or "размерн" in joined
+
+    follow = search_project(
+        "посмотри что тут есть",
+        history=[
+            {
+                "role": "assistant",
+                "content": r"Папка: D:\Общая_Рабочая\Работы Валя\Кирилл Вышний Волочек",
+            }
+        ],
+    )
+    assert str(folder) in (follow.get("text") or "")
+
+    named = search_project("Кирилл Вышний Волочек")
+    folders = " ".join(named.get("folders") or [])
+    assert "Кирилл Вышний Волочек" in folders
+    assert "3м Кирилл" not in folders
+
+
+def test_crm_chat_search_goes_to_claude_not_folder_scan():
+    from unittest.mock import MagicMock, patch
+
+    from archive_search import answer_project_search
+    from crm_api import run_crm_chat
+
+    agent = MagicMock()
+    agent.ask_stream.return_value = iter(["### Ответ\nнашёл хозблоки через Qwen"])
+    with patch("crm_api._crm_agent", return_value=agent):
+        with patch("archive_search.answer_project_search") as archive:
+            result = run_crm_chat(
+                {"message": "поищи все хозблоки какие у нас есть прокты", "actor": "admin"}
+            )
+    assert result["ok"]
+    archive.assert_not_called()
+    agent.ask_stream.assert_called_once()
+    assert "qwen" in (result.get("answer") or "").lower() or "хозблок" in (
+        result.get("answer") or ""
+    ).lower()
+    with patch("crm_bridge.search_deals", return_value='{"ok": true, "deals": []}'):
+        direct = answer_project_search("Кирилл Вышний Волочек")
+    assert "Работы Валя" in (direct.get("answer") or "") or "5МД" in (direct.get("answer") or "")
+
+
+def test_format_chat_attachments_lists_id_and_path():
+    from crm_api import format_chat_attachments
+
+    text = format_chat_attachments(
+        [
+            {
+                "id": 41,
+                "name": "разуклонка кровли.pdf",
+                "shared_path": r"D:\CH-CRM\crm_files\umnik_chat\20\file.pdf",
+            }
+        ]
+    )
+    assert "id=41" in text
+    assert "разуклонка кровли.pdf" in text
+    assert r"umnik_chat\20\file.pdf" in text
+    assert "crm_attach_design_file" in text
+    assert "миграц" in text.lower()
+
+
+def test_crm_chat_prompt_sees_attachment():
+    from unittest.mock import MagicMock, patch
+
+    from crm_api import run_crm_chat
+
+    agent = MagicMock()
+    agent.ask_stream.return_value = iter(["положил файл в roof_slope"])
+    with patch("crm_api._crm_agent", return_value=agent):
+        result = run_crm_chat(
+            {
+                "message": "положи разуклонку в проектирование",
+                "actor": "admin",
+                "deal_id": 20,
+                "attachments": [
+                    {
+                        "id": 41,
+                        "name": "разуклонка кровли.pdf",
+                        "shared_path": r"D:\CH-CRM\crm_files\umnik_chat\20\file.pdf",
+                    }
+                ],
+            }
+        )
+    assert result["ok"]
+    kwargs = agent.ask_stream.call_args.kwargs
+    extra = kwargs.get("extra_prompt") or ""
+    assert "id=41" in extra
+    assert "разуклонка кровли.pdf" in extra
+    assert "crm_attach_design_file" in extra
+    assert "не пиши" in extra.lower() or "не пиши data-миграц" in extra.lower() or "миграц" in extra.lower()
+
+
+def test_guess_approval_slug_finishing_for_facade():
+    from crm_api import extract_approval_note, guess_approval_slug
+
+    message = "добавь в согласования фасад будет Планкен краска 5071 RAL"
+    assert guess_approval_slug(message) == "finishing"
+    assert "Планкен" in extract_approval_note(message)
+    assert "5071" in extract_approval_note(message)
+
+
+def test_crm_chat_writes_approval_without_claude():
+    from unittest.mock import MagicMock, patch
+
+    from crm_api import run_crm_chat
+
+    payload = {
+        "ok": True,
+        "approval": {
+            "slug": "finishing",
+            "title": "Отделка / материалы",
+            "status": "waiting_client",
+            "status_label": "Ждём клиента",
+            "notes": "фасад будет Планкен краска 5071 RAL",
+        },
+    }
+    agent = MagicMock()
+    with patch("crm_api._crm_agent", return_value=agent):
+        with patch(
+            "crm_bridge.update_approval",
+            return_value=__import__("json").dumps(payload, ensure_ascii=False),
+        ) as update:
+            result = run_crm_chat(
+                {
+                    "message": "добавь в согласования фасад будет Планкен краска 5071 RAL",
+                    "actor": "admin",
+                    "deal_id": 20,
+                }
+            )
+    assert result["ok"]
+    assert result["changed"]
+    assert "Отделка" in (result.get("answer") or "")
+    update.assert_called_once()
+    kwargs = update.call_args.kwargs
+    assert kwargs["append_note"]
+    assert "5071" in kwargs["append_note"]
+    assert kwargs["status"] == "waiting_client"
+    agent.ask_stream.assert_not_called()
+
+
+def test_ask_local_archive_empty_skips_qwen():
+    from agent import ask_local_archive
+
+    assert "Пустой" in ask_local_archive("  ")
+
+
+def test_ask_local_archive_runs_qwen_not_claude():
+    from unittest.mock import patch
+
+    import agent as agent_mod
+
+    def fake_stream(self, user_message, **kwargs):
+        assert kwargs.get("model") == "qwen2.5:14b"
+        assert kwargs.get("crm") is False
+        assert user_message == "Васкелово планировка"
+        yield "### Ход работы\n- ищу\n\n### Ответ\n3 спальни, 80 м²"
+
+    with patch.object(agent_mod.Agent, "ask_stream", fake_stream):
+        out = agent_mod.ask_local_archive("Васкелово планировка", plugins=[])
+    assert "3 спальни" in out
+    assert "Ход работы" not in out
+
+
+def test_claude_prompts_tell_to_call_qwen():
+    from claude_cli import SYSTEM_ARCHIVE, SYSTEM_CRM
+    from crm_api import CRM_CHAT_PROMPT
+
+    assert "ask_local_qwen" in SYSTEM_ARCHIVE
+    assert "ask_local_qwen" in SYSTEM_CRM
+    assert "ask_local_qwen" in CRM_CHAT_PROMPT
+    assert "design.py" in SYSTEM_CRM
+    assert "design.py" in CRM_CHAT_PROMPT
+    assert "хозблок" in SYSTEM_CRM.lower() or "хозблок" in __import__("domain").GLOSSARY_FOR_MODEL.lower()
+

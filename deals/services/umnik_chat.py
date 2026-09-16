@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import mimetypes
 import re
+import shutil
 from pathlib import Path
 
 from django.conf import settings
@@ -196,6 +197,18 @@ def get_thread(user, thread_id) -> UmnikChatThread | None:
     except (TypeError, ValueError):
         return None
     return UmnikChatThread.objects.filter(user=user, pk=pk).select_related('deal').first()
+
+
+def delete_thread(user, thread_id) -> bool:
+    """Удаляет нить пользователя вместе с сообщениями, вложениями и папкой файлов."""
+    thread = get_thread(user, thread_id)
+    if thread is None:
+        return False
+    chat_dir = _chat_dir(thread)
+    thread.delete()
+    if chat_dir.is_dir():
+        shutil.rmtree(chat_dir, ignore_errors=True)
+    return True
 
 
 def create_thread(user, *, kind: str, deal: Deal | None = None) -> UmnikChatThread:

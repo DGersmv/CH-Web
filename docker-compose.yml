@@ -55,6 +55,8 @@ services:
       # Источники для «вложить файл с сервера» в Общий чат (только чтение).
       - "D:/Общая_Рабочая:/mnt/rabochaya:ro"
       - "./umnik:/mnt/scan_pdf:ro"
+      # Кэш моделей faster-whisper — качается один раз, переживает пересборку.
+      - whisper_cache:/root/.cache/huggingface
     ports:
       - "8001:8000"
     extra_hosts:
@@ -78,6 +80,10 @@ services:
       REDIS_URL: redis://redis:6379/0
       DJANGO_COLLECTSTATIC: "0"
       DJANGO_RUN_MIGRATIONS: "0"
+      # Модель faster-whisper качается с HuggingFace — тот же прокси, что у Telegram.
+      HTTP_PROXY: ${TELEGRAM_PROXY:-}
+      HTTPS_PROXY: ${TELEGRAM_PROXY:-}
+      NO_PROXY: db,redis,localhost,127.0.0.1,host.docker.internal
     command:
       - sh
       - -c
@@ -86,6 +92,7 @@ services:
       - .:/app
       - "D:/Общая_Рабочая:/mnt/rabochaya:ro"
       - "./umnik:/mnt/scan_pdf:ro"
+      - whisper_cache:/root/.cache/huggingface
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -98,3 +105,4 @@ services:
 
 volumes:
   postgres_data:
+  whisper_cache:

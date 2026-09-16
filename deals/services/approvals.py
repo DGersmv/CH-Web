@@ -142,6 +142,10 @@ def build_approvals_context(deal):
             .order_by('-created_at')
             .first()
         )
+    from deals.models import DealInstruction
+    from deals.services.instructions import attach_latest_instructions
+
+    attach_latest_instructions(deal, items, DealInstruction.Kind.APPROVAL)
     return {
         'deal': deal,
         'approvals_list': items,

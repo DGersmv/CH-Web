@@ -227,6 +227,49 @@ TELEGRAM_MAX_FILE_MB = int(os.getenv('TELEGRAM_MAX_FILE_MB', '45') or 45)
 # На сетях, где Telegram закрыт, тот же прокси, что OPENROUTER_PROXY у умника.
 TELEGRAM_PROXY = (os.getenv('TELEGRAM_PROXY') or os.getenv('HTTPS_PROXY') or '').strip()
 
+# Расшифровка голосовых сообщений (speech-to-text).
+#   local (по умолчанию) — faster-whisper прямо в контейнере, без ключей и прокси.
+#   api — OpenAI-совместимый эндпоинт /audio/transcriptions (задать SPEECH_TO_TEXT_URL).
+SPEECH_TO_TEXT_BACKEND = (os.getenv('SPEECH_TO_TEXT_BACKEND', 'local') or 'local').strip()
+# Модель для local: base (быстро/легко), small (баланс, хорошо для русского), medium (точнее/тяжелее).
+SPEECH_TO_TEXT_LOCAL_MODEL = (os.getenv('SPEECH_TO_TEXT_LOCAL_MODEL', 'small') or 'small').strip()
+SPEECH_TO_TEXT_DEVICE = (os.getenv('SPEECH_TO_TEXT_DEVICE', 'cpu') or 'cpu').strip()
+SPEECH_TO_TEXT_COMPUTE = (os.getenv('SPEECH_TO_TEXT_COMPUTE', 'int8') or 'int8').strip()
+SPEECH_TO_TEXT_URL = os.getenv('SPEECH_TO_TEXT_URL', '').strip()
+SPEECH_TO_TEXT_KEY = os.getenv('SPEECH_TO_TEXT_KEY', '').strip()
+SPEECH_TO_TEXT_MODEL = (os.getenv('SPEECH_TO_TEXT_MODEL', 'whisper-1') or 'whisper-1').strip()
+SPEECH_TO_TEXT_LANGUAGE = os.getenv('SPEECH_TO_TEXT_LANGUAGE', 'ru').strip()
+SPEECH_TO_TEXT_TIMEOUT = float(os.getenv('SPEECH_TO_TEXT_TIMEOUT', '120') or 120)
+SPEECH_TO_TEXT_MAX_MB = float(os.getenv('SPEECH_TO_TEXT_MAX_MB', '25') or 25)
+# Пустой SPEECH_TO_TEXT_PROXY — берём HTTPS_PROXY, затем TELEGRAM_PROXY (HuggingFace часто закрыт).
+SPEECH_TO_TEXT_PROXY = (
+    os.getenv('SPEECH_TO_TEXT_PROXY') or os.getenv('HTTPS_PROXY') or TELEGRAM_PROXY or ''
+).strip()
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'simple': {
+            'format': '{levelname} {name} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+    },
+    'loggers': {
+        'deals.telegram': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
+
 USE_HTTPS = os.getenv('USE_HTTPS', 'False').lower() == 'true'
 SESSION_COOKIE_SECURE = USE_HTTPS
 CSRF_COOKIE_SECURE = USE_HTTPS

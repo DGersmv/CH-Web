@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -11,8 +12,8 @@ import ollama
 from budget import BUDGET
 from config import (
     ARCHIVE_ROOT,
-    CHAT_BACKEND,
     CHAT_MODEL_LABELS,
+    CLAUDE_CLI_MODEL,
     DEFAULT_CHAT_MODEL,
     OLLAMA_MODEL,
     OLLAMA_NUM_CTX,
@@ -48,8 +49,9 @@ SYSTEM = f"""Ты умник архива PDF. Только поиск и ана
 
 {GLOSSARY_FOR_MODEL}"""
 
-SYSTEM_CRM = f"""Ты умник CRM. Сейчас правим сделки и файлы D:\\CH-CRM, не архив.
+SYSTEM_CRM = f"""Ты умник CRM. Сделки и файлы D:\\CH-CRM, плюс поиск проектов в архиве.
 Права — как у человека в чате (crm_whoami). Admin может удалять сделки через crm_delete_deal.
+Ищут проект/планировку/PDF по имени — search_archive_project (архив {ARCHIVE_ROOT}), не только crm_search_deals.
 Не пиши «готов работать с архивом» и не говори, что нет эндпоинта на удаление, если can_delete true.
 Не выдумывай пути и суммы. Если нужно заглянуть на диск или в сделку — вызови инструмент.
 
@@ -376,7 +378,8 @@ class Agent:
         """Claude по подписке. Историю держит сам CLI — он помнит сессию."""
         import claude_cli
 
-        steps.append("Claude CRM" if crm else "Claude по подписке")
+        prefix = "Claude CRM" if crm else "Claude Opus"
+        steps.append(f"{prefix} · {CLAUDE_CLI_MODEL}" if CLAUDE_CLI_MODEL else prefix)
         yield format_trace(steps)
         for kind, payload in claude_cli.ask_stream(
             user_message,
@@ -537,3 +540,54 @@ class Agent:
         for text in self.ask_stream(user_message, history=history):
             pass
         return strip_thinking(text) or text
+
+
+_LOCAL_ARCHIVE_LOCK = threading.Lock()
+LOCAL_ARCHIVE_TIMEOUT_SEC = 120
+_FALLBACK_TOOLS = (
+    "Вызови search_layout / search_pdf / search_archive_project сам."
+)
+
+
+def ask_local_archive(question: str, plugins: list[Plugin] | None = None) -> str:
+    """Локальный Qwen 14B с инструментами архива. Для Claude, не для самого Qwen."""
+    q = (question or "").strip()
+    if not q:
+        return "Пустой вопрос для локального ИИ."
+    if not _LOCAL_ARCHIVE_LOCK.acquire(blocking=False):
+        return "Локальный Qwen уже разбирает другой запрос. " + _FALLBACK_TOOLS
+
+    holder: dict[str, str] = {}
+
+    def run() -> None:
+        try:
+            from plugins.registry import load_plugins
+
+            helper = Agent(plugins if plugins is not None else load_plugins())
+            text = ""
+            for chunk in helper.ask_stream(
+                q,
+                model=OLLAMA_MODEL,
+                readonly=True,
+                user="claude-qwen",
+                crm=False,
+            ):
+                text = chunk
+            holder["text"] = strip_thinking(text) or text or "Пустой ответ локального ИИ."
+        except Exception as exc:
+            holder["text"] = f"Локальный Qwen недоступен ({exc}). {_FALLBACK_TOOLS}"
+        finally:
+            _LOCAL_ARCHIVE_LOCK.release()
+
+    try:
+        worker = threading.Thread(target=run, name="ask-local-qwen", daemon=True)
+        worker.start()
+    except Exception as exc:
+        _LOCAL_ARCHIVE_LOCK.release()
+        return f"Локальный Qwen недоступен ({exc}). {_FALLBACK_TOOLS}"
+    worker.join(LOCAL_ARCHIVE_TIMEOUT_SEC)
+    if worker.is_alive():
+        return (
+            "Локальный Qwen не успел за 2 минуты. " + _FALLBACK_TOOLS
+        )
+    return holder.get("text") or ("Локальный Qwen не ответил. " + _FALLBACK_TOOLS)

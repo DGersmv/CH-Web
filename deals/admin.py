@@ -5,6 +5,7 @@ from .models import (
     Deal,
     DealApproval,
     DealDesignSection,
+    DealInstruction,
     LibraryAsset,
     ProjectFile,
     ProjectVersion,
@@ -110,6 +111,16 @@ class DealDesignSectionAdmin(admin.ModelAdmin):
     search_fields = ('deal__project_code', 'title', 'slug', 'comment')
     ordering = ('deal', 'sort_order')
     autocomplete_fields = ('deal',)
+
+
+@admin.register(DealInstruction)
+class DealInstructionAdmin(admin.ModelAdmin):
+    list_display = ('deal', 'kind', 'source', 'actor_username', 'requested_by', 'requested_at', 'text')
+    list_filter = ('kind', 'source', 'requested_at')
+    search_fields = ('deal__project_code', 'text', 'requested_by__username')
+    ordering = ('-requested_at',)
+    autocomplete_fields = ('deal', 'requested_by')
+    readonly_fields = ('requested_at',)
 
 
 class UmnikChatAttachmentInline(admin.TabularInline):

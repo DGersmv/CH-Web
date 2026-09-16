@@ -7,9 +7,9 @@ import urllib.parse
 import urllib.request
 from contextvars import ContextVar
 
-from config import CRM_API_URL, MCP_TOKEN
+from config import CRM_API_URL, CRM_DEFAULT_ACTOR, MCP_TOKEN
 
-ACTOR: ContextVar[str] = ContextVar("crm_actor", default="admin")
+ACTOR: ContextVar[str] = ContextVar("crm_actor", default="")
 
 
 def _request(method: str, path: str, *, query: dict | None = None, body: dict | None = None) -> dict:
@@ -20,7 +20,8 @@ def _request(method: str, path: str, *, query: dict | None = None, body: dict | 
     if query:
         url += "?" + urllib.parse.urlencode({k: v for k, v in query.items() if v not in (None, "")})
     data = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
-    headers = {"Accept": "application/json", "X-Umnik-Actor": ACTOR.get() or "admin"}
+    actor = ACTOR.get() or CRM_DEFAULT_ACTOR
+    headers = {"Accept": "application/json", "X-Umnik-Actor": actor}
     if MCP_TOKEN:
         headers["Authorization"] = f"Bearer {MCP_TOKEN}"
     if data is not None:
@@ -83,6 +84,41 @@ def update_cost(deal_id: str, materials_total: str = "", work_total: str = "") -
             body={"materials_total": materials_total, "work_total": work_total},
         )
     )
+
+
+def update_approval(
+    deal_id: str,
+    slug: str,
+    status: str = "",
+    comment: str = "",
+    notes: str = "",
+    append_note: str = "",
+) -> str:
+    body: dict = {"slug": slug}
+    if str(status).strip():
+        body["status"] = str(status).strip()
+    if str(comment).strip():
+        body["comment"] = comment
+    if str(notes).strip():
+        body["notes"] = notes
+    if str(append_note).strip():
+        body["append_note"] = append_note
+    return dump(_request("PATCH", f"/api/umnik/deals/{int(deal_id)}/approval/", body=body))
+
+
+def attach_design_file(
+    deal_id: str,
+    slug: str,
+    source_path: str = "",
+    attachment_id: str = "",
+    title: str = "",
+) -> str:
+    body = {"slug": slug, "title": title}
+    if str(attachment_id).strip():
+        body["attachment_id"] = str(attachment_id).strip()
+    if str(source_path).strip():
+        body["source_path"] = str(source_path).strip()
+    return dump(_request("POST", f"/api/umnik/deals/{int(deal_id)}/design-file/", body=body))
 
 
 def delete_deal(deal_id: str = "", project_code: str = "") -> str:

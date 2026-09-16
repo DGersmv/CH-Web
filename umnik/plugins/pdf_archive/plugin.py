@@ -191,7 +191,31 @@ class PdfArchivePlugin:
                 },
                 handler=self._tool_layout,
             ),
+            ToolSpec(
+                name="search_archive_project",
+                description=(
+                    "Найти проект в архиве по имени клиента, участка, 1МД/2МД: папки и основные PDF. "
+                    "Для вопросов «найди проект …», не для сделок CRM."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Имя клиента, участок, код вроде 5МД Кирилл",
+                        }
+                    },
+                    "required": ["query"],
+                },
+                handler=self._tool_archive_project,
+            ),
         ]
+
+    def _tool_archive_project(self, query: str = "", **_: object) -> str:
+        from archive_search import search_project
+
+        found = search_project(query)
+        return found.get("text") or f"В архиве ничего не нашлось по «{query}»."
 
     def _tool_search(self, query: str = "", scope: str = "", **_: object) -> str:
         q = (query or "").strip()

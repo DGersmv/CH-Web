@@ -69,7 +69,6 @@ OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "qwen/qwen2.5-vl-72b-instr
 OPENROUTER_CHAT_MODEL = os.environ.get(
     "OPENROUTER_CHAT_MODEL", "qwen/qwen3-235b-a22b-2507"
 )
-CHAT_BACKEND = (os.environ.get("CHAT_BACKEND") or "openrouter").strip().lower()
 OPENROUTER_MAX_USD = float(os.environ.get("OPENROUTER_MAX_USD", "4.0"))
 # Потолок на одного человека в сутки. Чат открыт всей сети — без него один
 # пользователь выжигает общий баланс.
@@ -107,7 +106,19 @@ LAN_READONLY = (os.environ.get("LAN_READONLY") or "1").strip().lower() not in {
     "false",
     "no",
 }
-WRITE_TOOLS = frozenset({"write_text", "make_dir", "delete_file", "crm_update_deal", "crm_update_config", "crm_update_cost", "crm_delete_deal"})
+WRITE_TOOLS = frozenset(
+    {
+        "write_text",
+        "make_dir",
+        "delete_file",
+        "crm_update_deal",
+        "crm_update_config",
+        "crm_update_cost",
+        "crm_delete_deal",
+        "crm_attach_design_file",
+        "crm_update_approval",
+    }
+)
 CRM_TOOLS = frozenset(
     {
         "crm_whoami",
@@ -117,6 +128,8 @@ CRM_TOOLS = frozenset(
         "crm_update_config",
         "crm_update_cost",
         "crm_delete_deal",
+        "crm_attach_design_file",
+        "crm_update_approval",
         "copy_to_crm",
     }
 )
@@ -124,6 +137,9 @@ CRM_TOOLS = frozenset(
 CRM_API_URL = (os.environ.get("CRM_API_URL") or "http://127.0.0.1:8001").strip()
 # Умник живёт в D:\CH-CRM\umnik — корень CRM на уровень выше, если не задан явно.
 CRM_ROOT = Path(os.environ.get("CRM_ROOT") or str(ROOT.parent))
+# От чьего имени идут crm_* вне чата CRM (Claude Code, тесты): в чате актор
+# берётся из сессии, здесь его некому подставить и Django отвечал unauthorized.
+CRM_DEFAULT_ACTOR = (os.environ.get("CRM_DEFAULT_ACTOR") or "admin").strip()
 
 
 def crm_mode() -> bool:
@@ -131,14 +147,14 @@ def crm_mode() -> bool:
 
 # Claude идёт через CLI и подписку (логин-пароль), а не через API-ключ.
 CLAUDE_SUBSCRIPTION = "claude-подписка"
-# Модель внутри подписки. Пусто — какая стоит в Claude Code по умолчанию.
-CLAUDE_CLI_MODEL = (os.environ.get("CLAUDE_CLI_MODEL") or "").strip()
+# Alias opus — актуальная Opus на аккаунте, не конкретный ID вроде claude-opus-4-8.
+CLAUDE_CLI_MODEL = (os.environ.get("CLAUDE_CLI_MODEL") or "opus").strip()
 # Сколько запросов к Claude выполняем одновременно: подписка одна на всех.
 CLAUDE_MAX_PARALLEL = int(os.environ.get("CLAUDE_MAX_PARALLEL", "2"))
 CLAUDE_TIMEOUT_SEC = int(os.environ.get("CLAUDE_TIMEOUT_SEC", "300"))
 
 CHAT_MODELS = (
-    (CLAUDE_SUBSCRIPTION, "Claude — подписка Pro"),
+    (CLAUDE_SUBSCRIPTION, "Claude Opus — подписка"),
     ("qwen2.5:14b", "Локальный ИИ (Qwen2.5 14B)"),
 )
 CHAT_MODEL_LABELS = {mid: label for mid, label in CHAT_MODELS}

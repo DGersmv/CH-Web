@@ -37,6 +37,8 @@ _ATTACH_LINE_RE = re.compile(r"^ATTACH_FILE:\s*.+$", re.M)
 READ_TOOLS = (
     "search_layout",
     "search_pdf",
+    "search_archive_project",
+    "ask_local_qwen",
     "get_pdf_info",
     "look_at_drawing",
     "list_dir",
@@ -65,6 +67,9 @@ SYSTEM_ARCHIVE = f"""Ты умник архива PDF. Сейчас НЕ CRM: т
 Если просят «дай файл / скинь PDF / положи в чат» — вызови attach_file с полным путём.
 Не выдумывай пути: смотри диск инструментами mcp__{MCP_NAME}__*.
 Если инструмент вернул список — данные есть, перечисли с площадями и полным путём.
+PDF, проекты, планировки: сначала search_layout / search_pdf / search_archive_project.
+Если мало фактов или нужно разобрать смысл нескольких файлов — ask_local_qwen
+(локальный Qwen 14B, сам ходит в индекс). Не для кода и не для сделок.
 
 {GLOSSARY_FOR_MODEL}"""
 
@@ -73,9 +78,17 @@ SYSTEM_CRM = f"""Ты умник-разработчик внутри CRM CH-Web.
 Права на запись в {CRM_ROOT} уже выданы. Не проси нажать Allow и не останавливайся из‑за «permissions».
 Правь сразу: Edit/Write или mcp__{MCP_NAME}__write_text / make_dir. Если Edit вернул отказ — сразу write_text тем же содержимым.
 После правок напиши, какие файлы изменил и что обновить в браузере (шаблон — Ctrl+F5; Python — docker compose restart app).
-Сделки и цифры: crm_whoami, crm_search_deals, crm_get_deal, crm_update_deal, crm_update_config, crm_update_cost, crm_delete_deal.
+Сделки и цифры: crm_whoami, crm_search_deals, crm_get_deal, crm_update_deal, crm_update_config, crm_update_cost, crm_delete_deal, crm_attach_design_file, crm_update_approval.
+«Добавь в согласования …» (материал, цвет, RAL, решение клиента) — crm_update_approval
+(deal_id, slug, append_note). Фасад и отделка — slug finishing, не пиши миграцию и не правь шаблон.
 Права как у человека в чате. Admin может crm_delete_deal.
-Архив {ARCHIVE_ROOT} — планировки/PDF, не основная тема. Не представляйся помощником по архиву.
+PDF из чата в раздел «Проектирование» — crm_attach_design_file (deal_id, slug, attachment_id или source_path, title). Не пиши data-миграции Django ради файла на одной сделке.
+Шаблон разделов для всех сделок — DEFAULT_DESIGN_SECTIONS в deals/services/design.py, потом docker compose restart app.
+Раздел «Проектирование», чек-лист, объединение ОВ/ВК, вкладки, формы — правь код в {CRM_ROOT} (deals/services/design.py). Это не архив.
+«Найди / поищи / какие есть» по проектам, хозблокам, планировкам, PDF — ask_local_qwen
+(локальный Qwen 14B, архив {ARCHIVE_ROOT}). Не пиши «ничего не нашлось», пока не вызвал Qwen.
+Правки кода и сделок — сам, без Qwen. Параллельно можно crm_search_deals.
+Не представляйся только помощником по архиву.
 После инструментов всегда напиши, что сделал. Не оставляй ответ пустым.
 
 {GLOSSARY_FOR_MODEL}"""

@@ -40,10 +40,13 @@ if crm_mode():
 - {CRM_ROOT} — полный доступ (не .env)
 - {ARCHIVE_ROOT} — только чтение, брать планировки и PDF
 - {PROJECT_ROOT} — папка умника (индекс, логи), если нужно положить копию
-Сделки: crm_whoami, crm_search_deals, crm_get_deal, crm_update_deal, crm_update_config, crm_update_cost, crm_delete_deal
+Сделки: crm_whoami, crm_search_deals, crm_get_deal, crm_update_deal, crm_update_config, crm_update_cost, crm_delete_deal, crm_attach_design_file
+Согласования (решение клиента, материалы, цвет, RAL) — crm_update_approval (deal_id, slug, append_note)
 Файлы: list_dir, read_text, write_text, copy_to_crm
-PDF: search_pdf / search_layout / look_at_drawing / attach_file
-Не представляйся помощником по архиву.
+PDF: search_pdf / search_layout / search_archive_project / look_at_drawing / attach_file
+Разбор PDF и планировок, если таблиц мало — ask_local_qwen (локальный Qwen 14B)
+Ищут проект по имени — search_archive_project, не только crm_search_deals.
+Не представляйся только помощником по архиву.
 
 {GLOSSARY_FOR_MODEL}"""
 else:
@@ -55,6 +58,7 @@ else:
 - list_dir / search_name / read_text
 - write_text / make_dir / delete_file — только {PROJECT_ROOT}
 - search_pdf / get_pdf_info / search_layout / look_at_drawing
+- ask_local_qwen — локальный Qwen 14B: разбор PDF, поиск проектов и планировок
 - attach_file — положить найденный файл в чат, чтобы человек скачал
 
 Если инструмент вернул список — данные есть, перечисли. Не пиши «нет таких данных», пока список не пустой.
@@ -134,6 +138,20 @@ def search_pdf(query: str, scope: str = "") -> str:
 
 
 @mcp.tool(
+    description=(
+        "Найти проект в архиве Общая_Рабочая по имени клиента, участка, 1МД/2МД. "
+        "Папки, основные PDF и планировки. Для чата CRM, когда ищут проект, а не сделку."
+    ),
+    structured_output=False,
+)
+def search_archive_project(query: str) -> str:
+    from archive_search import search_project
+
+    found = search_project(query)
+    return found.get("text") or f"В архиве ничего не нашлось по «{query}»."
+
+
+@mcp.tool(
     description="Карточка одного PDF по полному пути из поиска: страницы, вид, штамп, сниппет.",
     structured_output=False,
 )
@@ -169,8 +187,24 @@ def look_at_drawing(path: str) -> str:
         return json.dumps(done, ensure_ascii=False, indent=2)
     return (
         "Этого листа ещё нет в таблицах. MCP не вызывает OpenRouter. "
-        "Можно search_layout / search_name / list_dir по той же папке."
+        "Можно search_layout / search_name / list_dir по той же папке "
+        "или ask_local_qwen с вопросом про этот файл."
     )
+
+
+@mcp.tool(
+    description=(
+        "Локальный Qwen 14B: разбор PDF, поиск проектов и планировок в архиве. "
+        "Когда search_layout / search_pdf мало или нужно собрать смысл нескольких файлов. "
+        "Не для кода CRM и не для сделок."
+    ),
+    structured_output=False,
+)
+def ask_local_qwen(query: str) -> str:
+    from agent import ask_local_archive
+    from plugins.workspace import WorkspacePlugin
+
+    return ask_local_archive(query, plugins=[plugin(), WorkspacePlugin()])
 
 
 @mcp.tool(
@@ -339,6 +373,65 @@ def crm_delete_deal(deal_id: str = "", project_code: str = "") -> str:
     import crm_bridge
 
     return guard_crm("crm_delete_deal") or crm_bridge.delete_deal(deal_id, project_code)
+
+
+@mcp.tool(
+    description=(
+        "Записать решение в чек-лист «Согласования» сделки. "
+        "deal_id и slug обязательны (layout, cost_quote, bathrooms, electrical, "
+        "additional_options, finishing, site, foundation_geology, timeline, contract_data). "
+        "append_note — дописать строку к рабочим заметкам (не затирая старые), "
+        "notes — заменить заметки целиком, comment — короткий комментарий, "
+        "status — not_started/waiting_client/approved/rejected/not_required."
+    ),
+    structured_output=False,
+)
+def crm_update_approval(
+    deal_id: str,
+    slug: str,
+    status: str = "",
+    comment: str = "",
+    notes: str = "",
+    append_note: str = "",
+) -> str:
+    import crm_bridge
+
+    return guard_crm("crm_update_approval") or crm_bridge.update_approval(
+        deal_id,
+        slug,
+        status=status,
+        comment=comment,
+        notes=notes,
+        append_note=append_note,
+    )
+
+
+@mcp.tool(
+    description=(
+        "Положить файл в раздел «Проектирование» сделки. "
+        "deal_id и slug обязательны (например roof_slope). "
+        "Файл из этого чата — attachment_id; иначе source_path (shared_path). "
+        "title — название раздела, если его ещё нет. "
+        "Не пиши Django-миграции ради PDF."
+    ),
+    structured_output=False,
+)
+def crm_attach_design_file(
+    deal_id: str,
+    slug: str,
+    source_path: str = "",
+    attachment_id: str = "",
+    title: str = "",
+) -> str:
+    import crm_bridge
+
+    return guard_crm("crm_attach_design_file") or crm_bridge.attach_design_file(
+        deal_id,
+        slug,
+        source_path=source_path,
+        attachment_id=attachment_id,
+        title=title,
+    )
 
 
 @mcp.tool(

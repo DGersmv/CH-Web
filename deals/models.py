@@ -267,6 +267,78 @@ class DealDesignSection(models.Model):
         return self.status in {self.Status.RELEASED, self.Status.NOT_REQUIRED}
 
 
+class DealInstruction(models.Model):
+    """Кто в чате или на карточке дал указание: согласование, планировка, производство."""
+
+    class Kind(models.TextChoices):
+        APPROVAL = 'approval', 'Согласование'
+        DESIGN = 'design', 'Проектирование'
+        PRODUCTION = 'production', 'Производство'
+
+    class Source(models.TextChoices):
+        CHAT = 'chat', 'Чат'
+        FORM = 'form', 'Карточка'
+        TASK = 'task', 'Задача'
+
+    deal = models.ForeignKey(Deal, on_delete=models.CASCADE, related_name='instructions')
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    source = models.CharField(max_length=20, choices=Source.choices, default=Source.CHAT)
+    approval = models.ForeignKey(
+        'DealApproval',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='instructions',
+    )
+    design_section = models.ForeignKey(
+        'DealDesignSection',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='instructions',
+    )
+    task = models.ForeignKey(
+        'tasks.Task',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='instructions',
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='deal_instructions',
+    )
+    requested_at = models.DateTimeField(auto_now_add=True)
+    actor_username = models.CharField(
+        max_length=150,
+        blank=True,
+        default='',
+        verbose_name='Логин в чате',
+    )
+    text = models.TextField()
+
+    class Meta:
+        ordering = ['-requested_at', '-id']
+        indexes = [
+            models.Index(fields=['deal', 'kind', '-requested_at'], name='deal_instr_deal_kind_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.deal_id} {self.kind} {self.requested_at}'
+
+    @property
+    def requested_by_label(self) -> str:
+        """Кто был в диалоге: логин из чата, не ФИО из профиля."""
+        login = (self.actor_username or '').strip()
+        if login:
+            return login
+        user = self.requested_by
+        return getattr(user, 'username', '') or ''
+
+
 class DealBathroom(models.Model):
     """Один санузел в рамках версии проекта (вкладка «Санузел №k»)."""
 

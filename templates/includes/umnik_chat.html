@@ -118,6 +118,33 @@
     .umnik-item:hover { background: #e9ecef; }
     .umnik-item.active { background: #dce8f8; color: #1b4d8c; }
     .umnik-item.nested { padding-left: 22px; font-size: 12px; color: #495057; }
+    .umnik-item-row {
+        display: flex;
+        align-items: stretch;
+    }
+    .umnik-item-row .umnik-item {
+        flex: 1;
+        min-width: 0;
+    }
+    .umnik-del {
+        flex: 0 0 28px;
+        border: 0;
+        background: transparent;
+        color: #ced4da;
+        cursor: pointer;
+        font-size: 16px;
+        line-height: 1;
+        padding: 0;
+    }
+    .umnik-item-row:hover .umnik-del,
+    .umnik-item-row:focus-within .umnik-del {
+        color: #6c757d;
+    }
+    .umnik-del:hover,
+    .umnik-del:focus {
+        color: #dc3545;
+        background: #f8d7da;
+    }
     #umnik-deal-search { margin: 0 8px 6px; }
 </style>
 <button id="umnik-toggle" type="button" class="btn btn-dark">Чат умника</button>
@@ -153,7 +180,7 @@
                 <input type="file" id="umnik-file" class="d-none" multiple>
                 <button type="button" id="umnik-attach" class="btn btn-sm btn-outline-secondary" title="Прикрепить файл или фото с компьютера">📎</button>
                 <button type="button" id="umnik-attach-srv" class="btn btn-sm btn-outline-secondary" title="Вложить файл с сервера по пути (Общая_Рабочая, umnik, crm_files)">Сервер</button>
-                <input id="umnik-input" class="form-control form-control-sm" autocomplete="off" placeholder="Спросить или изменить — права как у вас в CRM">
+                <input id="umnik-input" class="form-control form-control-sm" autocomplete="off" placeholder="Сделка, расчёт или найти проект в архиве">
                 <button class="btn btn-sm btn-primary" type="submit">Ок</button>
             </div>
         </form>
@@ -373,6 +400,74 @@
             subtitleEl.textContent = (thread && thread.title) || 'новый чат';
         }
     }
+    function threadRow(thread, extraClass) {
+        var row = document.createElement('div');
+        row.className = 'umnik-item-row';
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'umnik-item' + (extraClass ? ' ' + extraClass : '')
+            + (String(thread.id) === String(state.threadId) ? ' active' : '');
+        btn.textContent = thread.title || 'Новый чат';
+        btn.title = thread.title || 'Новый чат';
+        btn.addEventListener('click', function () { openThread(thread.id); });
+        var del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'umnik-del';
+        del.title = 'Удалить диалог';
+        del.setAttribute('aria-label', 'Удалить диалог');
+        del.textContent = '×';
+        del.addEventListener('click', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            deleteThread(thread);
+        });
+        row.appendChild(btn);
+        row.appendChild(del);
+        return row;
+    }
+    function deleteThread(thread) {
+        var title = thread.title || 'Новый чат';
+        if (!window.confirm('Удалить диалог «' + title + '»? Сообщения и вложения пропадут.')) return;
+        fetch(urls.thread + thread.id + '/delete/', {
+            method: 'POST',
+            headers: headers(),
+            body: '{}'
+        }).then(function (res) { return res.json(); })
+          .then(function (data) {
+              if (!data.ok) {
+                  add('err', 'Не удалось удалить диалог.');
+                  return;
+              }
+              var wasOpen = String(state.threadId) === String(thread.id);
+              state.threads = state.threads.filter(function (item) {
+                  return String(item.id) !== String(thread.id);
+              });
+              try { localStorage.removeItem('umnik-draft:t' + thread.id); } catch (e) {}
+              if (!wasOpen) {
+                  renderSidebar();
+                  return;
+              }
+              state.pending = [];
+              renderPending();
+              if (thread.kind === 'deal' && thread.deal_id) {
+                  openDeal(thread.deal_id);
+                  return;
+              }
+              var next = state.threads.find(function (item) { return item.kind === 'general'; });
+              if (next) {
+                  openThread(next.id);
+                  return;
+              }
+              state.threadId = null;
+              state.kind = 'general';
+              state.dealId = pageDealId || null;
+              remember();
+              renderSidebar();
+              showMessages([]);
+              applyDraft();
+          })
+          .catch(function () { add('err', 'Не удалось удалить диалог.'); });
+    }
     function renderSidebar() {
         var general = state.threads.filter(function (item) { return item.kind === 'general'; });
         generalList.innerHTML = '';
@@ -383,12 +478,7 @@
             generalList.appendChild(empty);
         }
         general.forEach(function (thread) {
-            var btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'umnik-item' + (String(thread.id) === String(state.threadId) ? ' active' : '');
-            btn.textContent = thread.title || 'Новый чат';
-            btn.addEventListener('click', function () { openThread(thread.id); });
-            generalList.appendChild(btn);
+            generalList.appendChild(threadRow(thread));
         });
 
         var query = ((dealSearch && dealSearch.value) || '').trim().toLowerCase();
@@ -408,17 +498,9 @@
             btn.textContent = deal.project_code;
             btn.addEventListener('click', function () { openDeal(deal.id); });
             wrap.appendChild(btn);
-            if (state.kind === 'deal' && String(state.dealId) === String(deal.id) && dealThreads.length > 1) {
+            if (state.kind === 'deal' && String(state.dealId) === String(deal.id) && dealThreads.length) {
                 dealThreads.forEach(function (thread) {
-                    var nested = document.createElement('button');
-                    nested.type = 'button';
-                    nested.className = 'umnik-item nested' + (String(thread.id) === String(state.threadId) ? ' active' : '');
-                    nested.textContent = thread.title || 'Новый чат';
-                    nested.addEventListener('click', function (event) {
-                        event.stopPropagation();
-                        openThread(thread.id);
-                    });
-                    wrap.appendChild(nested);
+                    wrap.appendChild(threadRow(thread, 'nested'));
                 });
             }
             dealList.appendChild(wrap);

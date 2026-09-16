@@ -106,6 +106,12 @@ def _checklist_summary(context, list_key, gate_key, accepted=None):
                 'project_version': getattr(i.project_version, 'version_number', None),
                 'decided_by': getattr(i.decided_by, 'username', '') or '',
                 'decided_at': i.decided_at.isoformat() if i.decided_at else None,
+                'requested_by': getattr(getattr(i, 'last_instruction', None), 'requested_by_label', '') or '',
+                'requested_at': (
+                    i.last_instruction.requested_at.isoformat()
+                    if getattr(i, 'last_instruction', None) and i.last_instruction.requested_at
+                    else None
+                ),
             }
             for i in items
         ],
@@ -435,3 +441,150 @@ def delete_deal(deal: Deal, user) -> dict:
         except OSError:
             pass
     return {'ok': True, 'deleted': {'id': deal_id, 'project_code': code}}
+
+
+def update_approval(deal: Deal, user, fields: dict) -> dict:
+    """Пункт чек-листа согласований: статус, комментарий, рабочие заметки."""
+    blocked = _forbid_edit(user)
+    if blocked:
+        return blocked
+    from deals.models import DealApproval
+    from deals.services.approvals import ensure_deal_approvals
+
+    data = fields or {}
+    slug = str(data.get('slug') or '').strip()
+    if not slug:
+        return {'ok': False, 'error': 'slug is required'}
+    ensure_deal_approvals(deal)
+    approval = deal.approvals.filter(slug=slug).first()
+    if approval is None:
+        known = sorted(deal.approvals.values_list('slug', flat=True))
+        return {'ok': False, 'error': f'approval "{slug}" not found', 'known_slugs': known}
+
+    old_status = approval.status
+    changed = []
+
+    if data.get('status') not in (None, ''):
+        status = str(data['status']).strip()
+        allowed = {value for value, _label in DealApproval.Status.choices}
+        if status not in allowed:
+            return {'ok': False, 'error': f'unknown status "{status}"', 'allowed': sorted(allowed)}
+        if status != approval.status:
+            approval.status = status
+            changed.append('status')
+
+    if data.get('comment') is not None:
+        comment = str(data['comment']).strip()
+        if comment != approval.comment:
+            approval.comment = comment
+            changed.append('comment')
+
+    if data.get('notes') is not None:
+        notes = str(data['notes']).strip()
+        if notes != approval.notes:
+            approval.notes = notes
+            changed.append('notes')
+
+    append_note = str(data.get('append_note') or '').strip()
+    if append_note:
+        current = (approval.notes or '').rstrip()
+        already = any(
+            line.strip().casefold() == append_note.casefold()
+            for line in current.splitlines()
+        )
+        if not already:
+            approval.notes = f'{current}\n{append_note}'.strip() if current else append_note
+            changed.append('notes')
+
+    if not changed:
+        return {'ok': True, 'changed': False, 'approval': _approval_payload(approval)}
+
+    if 'status' in changed:
+        decided = {
+            DealApproval.Status.APPROVED,
+            DealApproval.Status.REJECTED,
+            DealApproval.Status.NOT_REQUIRED,
+        }
+        if approval.status in decided:
+            approval.decided_by = user
+            approval.decided_at = timezone.now()
+        else:
+            approval.decided_by = None
+            approval.decided_at = None
+    approval.save()
+
+    if 'status' in changed:
+        from deals.views import _ensure_latest_version_for_log
+
+        ChangeLog.objects.create(
+            project_version=_ensure_latest_version_for_log(deal, user),
+            changed_by=user,
+            field_path=f'approval.{slug}',
+            old_value={'value': old_status},
+            new_value={'value': approval.status},
+        )
+    record_domain_event(
+        actor=user,
+        event_type='deal.approval_changed',
+        entity_model='DealApproval',
+        entity_id=approval.id,
+        payload={'deal_id': deal.id, 'slug': slug, 'status': approval.status, 'fields': changed},
+    )
+    if append_note or 'notes' in changed:
+        from deals.models import DealInstruction
+        from deals.services.instructions import record_instruction
+
+        record_instruction(
+            deal=deal,
+            user=user,
+            text=append_note or approval.notes,
+            kind=DealInstruction.Kind.APPROVAL,
+            source=DealInstruction.Source.CHAT,
+            approval=approval,
+        )
+    return {
+        'ok': True,
+        'changed': True,
+        'fields': changed,
+        'approval': _approval_payload(approval),
+        'deal': serialize_deal(deal, user),
+    }
+
+
+def _approval_payload(approval) -> dict:
+    from deals.services.instructions import serialize_instruction
+
+    last = approval.instructions.select_related('requested_by').first()
+    return {
+        'slug': approval.slug,
+        'title': approval.title,
+        'status': approval.status,
+        'status_label': approval.get_status_display(),
+        'comment': approval.comment,
+        'notes': approval.notes,
+        'is_required': approval.is_required,
+        'is_satisfied': approval.is_satisfied,
+        'requested_by': last.requested_by_label if last else '',
+        'requested_at': last.requested_at.isoformat() if last and last.requested_at else None,
+        'last_instruction': serialize_instruction(last),
+    }
+
+
+def attach_design_file(deal: Deal, user, fields: dict) -> dict:
+    blocked = _forbid_edit(user)
+    if blocked:
+        return blocked
+    from deals.services.design import attach_file_to_design_section
+
+    data = fields or {}
+    result = attach_file_to_design_section(
+        deal,
+        slug=str(data.get('slug') or ''),
+        source_path=str(data.get('source_path') or ''),
+        attachment_id=data.get('attachment_id'),
+        title=str(data.get('title') or ''),
+        user=user,
+    )
+    if result.get('ok'):
+        result['deal'] = serialize_deal(deal, user)
+    return result

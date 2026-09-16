@@ -22,6 +22,7 @@ from deals.models import (
     UmnikChatThread,
 )
 from deals.services import telegram_api
+from deals.services import transcribe as stt
 from deals.services import umnik_chat as chat_store
 from deals.services.umnik import ask_umnik_chat
 
@@ -39,6 +40,8 @@ NOT_LINKED_TEXT = (
     '/start КОД\n'
     'Код одноразовый, его выдаёт ваш профиль в CRM.'
 )
+
+NO_STT_TEXT = 'Не разобрал голос. Напишите текстом или повторите голосовое.'
 
 
 # --------------------------------------------------------------------------- helpers
@@ -95,10 +98,29 @@ def _pick_media(message: dict) -> tuple[str, str, str] | None:
     audio = message.get('audio')
     if audio:
         return audio['file_id'], audio.get('file_name') or f'audio_{audio["file_id"][:10]}.mp3', audio.get('mime_type') or 'audio/mpeg'
+    note = message.get('video_note')
+    if note:
+        return note['file_id'], f'videonote_{note["file_id"][:10]}.mp4', 'video/mp4'
     return None
 
 
+_AUDIO_EXT = ('.ogg', '.oga', '.opus', '.mp3', '.m4a', '.wav', '.aac', '.flac')
+
+
+def _is_audio(name: str, mime: str) -> bool:
+    low = (name or '').lower()
+    if low.startswith('videonote_'):  # кружочек — тоже речь, whisper принимает mp4
+        return True
+    if (mime or '').startswith('audio/'):
+        return True
+    return low.endswith(_AUDIO_EXT)
+
+
 def _save_media(thread: UmnikChatThread, spec: tuple[str, str, str], user):
+    """Скачивает медиа, кладёт вложением. Для аудио — ещё и расшифровывает.
+
+    Возвращает ``(attachment | None, transcript_text)``.
+    """
     file_id, name, mime = spec
     max_bytes = int(getattr(settings, 'TELEGRAM_MAX_FILE_MB', 45)) * 1024 * 1024
     try:
@@ -106,25 +128,83 @@ def _save_media(thread: UmnikChatThread, spec: tuple[str, str, str], user):
         data = telegram_api.download_file(path, max_bytes=max_bytes)
     except telegram_api.TelegramError as exc:
         log.warning('telegram media skip: %s', exc)
-        return None
-    return chat_store.save_bytes(
+        return None, ''
+    att = chat_store.save_bytes(
         thread, name, data, mime=mime, origin=UmnikChatAttachment.Origin.UPLOAD, user=user,
     )
+    transcript = ''
+    if _is_audio(name, mime) and stt.is_configured():
+        try:
+            transcript = stt.transcribe(data, filename=name, mime=mime or 'audio/ogg')
+            if transcript:
+                log.info('speech-to-text: %s символов', len(transcript))
+            else:
+                log.warning('speech-to-text: пустая расшифровка (%s)', name)
+        except stt.TranscribeError as exc:
+            log.warning('speech-to-text: %s', exc)
+        except Exception:  # noqa: BLE001 - расшифровка не должна ронять цикл бота
+            log.exception('speech-to-text crashed')
+    elif _is_audio(name, mime):
+        log.warning('speech-to-text: движок недоступен, голос не расшифрован')
+    return att, transcript
 
 
 def _ask_and_reply(*, chat_id: int, reply_to: int, user, text: str, media_specs: list):
     thread = _group_thread(chat_id, user, _group_title_cache.get(chat_id, ''))
+    audio_specs = [spec for spec in media_specs if spec and _is_audio(spec[1], spec[2])]
+    if audio_specs:
+        telegram_api.send_chat_action(chat_id)
+        if stt.is_configured() and stt.is_local_backend() and not stt.local_model_loaded():
+            try:
+                telegram_api.send_message(
+                    chat_id,
+                    'Секунду, первый раз загружаю модель распознавания речи — это может занять пару минут.',
+                    reply_to=reply_to,
+                )
+            except telegram_api.TelegramError:
+                pass
+
     attachments = []
+    transcripts = []
     for spec in media_specs:
-        att = _save_media(thread, spec, user)
+        att, transcript = _save_media(thread, spec, user)
         if att is not None:
             attachments.append(att)
+        if transcript:
+            transcripts.append(transcript)
 
     body = (text or '').strip()
+    voice_note = '\n\n'.join(transcripts).strip()
+    if voice_note:
+        body = (body + '\n\n' if body else '') + 'Расшифровка голосового: ' + voice_note
+
+    if audio_specs and not voice_note and not body:
+        if attachments:
+            stored = f'[{_name_cache.get((chat_id, reply_to), "")}] (голосовое, не распознано)'.strip()
+            user_msg = chat_store.append_message(
+                thread, 'user', stored, has_attachments=True,
+            )
+            chat_store.link_attachments(user_msg, attachments)
+        try:
+            telegram_api.send_message(chat_id, NO_STT_TEXT, reply_to=reply_to)
+        except telegram_api.TelegramError as exc:
+            log.error('telegram sendMessage failed: %s', exc)
+        return
+
     if not body and not attachments:
+        if audio_specs:
+            try:
+                telegram_api.send_message(chat_id, NO_STT_TEXT, reply_to=reply_to)
+            except telegram_api.TelegramError as exc:
+                log.error('telegram sendMessage failed: %s', exc)
         return
     if not body:
         body = '(файл без комментария)'
+
+    umnik_attachments = [
+        att for att in attachments
+        if not _is_audio(att.original_name, att.mime_type)
+    ]
 
     history = chat_store.thread_history(thread)
     stored = f'[{_name_cache.get((chat_id, reply_to), "")}] {body}'.strip()
@@ -137,9 +217,11 @@ def _ask_and_reply(*, chat_id: int, reply_to: int, user, text: str, media_specs:
         history=history,
         actor=user.username,
         capabilities=umnik_capabilities(user),
-        attachments=chat_store.model_attachments(attachments),
+        attachments=chat_store.model_attachments(umnik_attachments),
     )
     answer = (result.get('answer') or '').strip() or 'Пустой ответ.'
+    if voice_note:
+        answer = f'🎤 Расшифровка: «{voice_note}»\n\n{answer}'
     outgoing = []
     for item in result.get('attachments') or []:
         raw = item.get('path') or item.get('server_path') if isinstance(item, dict) else str(item)

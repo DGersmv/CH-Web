@@ -555,8 +555,6 @@ class DealListView(LoginRequiredMixin, ListView):
         )
         status = self.request.GET.get('status', '').strip()
         module_count = self.request.GET.get('module_count', '').strip()
-        manager_id = self.request.GET.get('assigned_manager', '').strip()
-        mine = self.request.GET.get('mine', '').strip()
         search = self.request.GET.get('q', '').strip()
 
         if status and status in dict(Deal.Status.choices):
@@ -564,12 +562,6 @@ class DealListView(LoginRequiredMixin, ListView):
 
         if module_count.isdigit():
             queryset = queryset.filter(module_count=int(module_count))
-
-        if manager_id.isdigit():
-            queryset = queryset.filter(assigned_manager_id=int(manager_id))
-
-        if mine == '1':
-            queryset = queryset.filter(assigned_manager=self.request.user)
 
         if search:
             queryset = queryset.filter(
@@ -587,8 +579,6 @@ class DealListView(LoginRequiredMixin, ListView):
         context = super().get_context_data(**kwargs)
         selected_status = self.request.GET.get('status', '').strip()
         selected_module_count = self.request.GET.get('module_count', '').strip()
-        selected_manager = self.request.GET.get('assigned_manager', '').strip()
-        selected_mine = self.request.GET.get('mine', '').strip()
         search_query = self.request.GET.get('q', '').strip()
 
         for deal in context['deals']:
@@ -597,13 +587,8 @@ class DealListView(LoginRequiredMixin, ListView):
 
         context['status_choices'] = Deal.Status.choices
         context['module_choices'] = [3, 5, 7, 9, 11]
-        context['manager_choices'] = (
-            self.request.user.__class__.objects.filter(role='manager').order_by('username')
-        )
         context['selected_status'] = selected_status
         context['selected_module_count'] = selected_module_count
-        context['selected_manager'] = selected_manager
-        context['selected_mine'] = selected_mine == '1'
         context['search_query'] = search_query
         context['current_filters'] = self._build_filter_query_without_page()
         context['can_view_latest_total'] = is_leadership(self.request.user)
@@ -741,9 +726,8 @@ class DealDetailView(LoginRequiredMixin, DetailView):
             .order_by('-version_number')
         )
         context['versions'] = versions_list
-        context['tasks_for_deal'] = self.object.tasks.all()
+        context['tasks_for_deal'] = self.object.tasks.select_related('assignee', 'requested_by').all()
         context['status_choices'] = Deal.Status.choices
-        context['manager_choices'] = self.request.user.__class__.objects.filter(role='manager').order_by('username')
         context['is_file_only_role'] = is_file_only_role(self.request.user)
         context['is_leadership'] = is_leadership(self.request.user)
         context['draft_version'] = draft_version

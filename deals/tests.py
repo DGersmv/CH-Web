@@ -29,8 +29,11 @@ from .forms import DashboardLeadForm
 from .models import (
     Deal,
     DealAdditionalOptionLine,
+    DealApproval,
     DealBathroom,
     DealBathroomLine,
+    DealDesignSection,
+    DealInstruction,
     ProjectFile,
     ProjectVersion,
     build_project_code_from_parts,
@@ -923,6 +926,37 @@ class UmnikChatAccessTests(TestCase):
         self.assertEqual(deal_chat.json()['thread']['deal_id'], self.deal.id)
         self.assertContains(self.client.get(reverse('deal_detail', kwargs={'pk': self.deal.id})), 'umnik-general-list')
 
+    def test_owner_can_delete_thread(self):
+        from deals.models import UmnikChatMessage, UmnikChatThread
+
+        self.client.force_login(self.manager)
+        created = self.client.post(
+            reverse('umnik_chat_new'),
+            data=json.dumps({'kind': 'general'}),
+            content_type='application/json',
+        )
+        thread_id = created.json()['thread']['id']
+        UmnikChatMessage.objects.create(
+            thread_id=thread_id, role='user', content='черновик',
+        )
+        other = self.client.post(
+            reverse('umnik_chat_new'),
+            data=json.dumps({'kind': 'general'}),
+            content_type='application/json',
+        )
+        other_id = other.json()['thread']['id']
+
+        gone = self.client.post(reverse('umnik_chat_delete', kwargs={'thread_id': thread_id}))
+        self.assertEqual(gone.status_code, 200)
+        self.assertTrue(gone.json()['ok'])
+        self.assertFalse(UmnikChatThread.objects.filter(pk=thread_id).exists())
+        self.assertTrue(UmnikChatThread.objects.filter(pk=other_id).exists())
+
+        self.client.force_login(self.admin)
+        blocked = self.client.post(reverse('umnik_chat_delete', kwargs={'thread_id': other_id}))
+        self.assertEqual(blocked.status_code, 404)
+        self.assertTrue(UmnikChatThread.objects.filter(pk=other_id).exists())
+
     def test_designer_cannot_update_via_umnik_actions(self):
         from deals.services.umnik_actions import update_deal
 
@@ -960,7 +994,10 @@ class UmnikChatAccessTests(TestCase):
 class UmnikInternalApiTests(TestCase):
     def setUp(self):
         user_model = get_user_model()
-        self.admin = user_model.objects.create_user(username='admin', password='pass1234', role='admin')
+        self.admin = user_model.objects.create_user(
+            username='admin', password='pass1234', role='admin',
+            first_name='Юрий', last_name='Пушкин',
+        )
         self.deal = Deal.objects.create(project_code='3МД API Тест', module_count=3)
 
     def test_rejects_missing_token(self):
@@ -1015,5 +1052,163 @@ class UmnikInternalApiTests(TestCase):
             )
         self.assertEqual(response.status_code, 403)
         self.assertTrue(Deal.objects.filter(pk=self.deal.id).exists())
+
+    def test_admin_appends_approval_note(self):
+        from deals.services.approvals import ensure_deal_approvals
+
+        ensure_deal_approvals(self.deal)
+        with override_settings(UMNIK_TOKEN='test-umnik-token'):
+            first = self.client.patch(
+                reverse('umnik_deal_approval', kwargs={'deal_id': self.deal.id}),
+                data=json.dumps(
+                    {
+                        'slug': 'finishing',
+                        'append_note': 'Фасад — планкен, краска 5071 RAL',
+                        'status': 'waiting_client',
+                    }
+                ),
+                content_type='application/json',
+                HTTP_AUTHORIZATION='Bearer test-umnik-token',
+                HTTP_X_UMNIK_ACTOR='admin',
+            )
+            second = self.client.patch(
+                reverse('umnik_deal_approval', kwargs={'deal_id': self.deal.id}),
+                data=json.dumps(
+                    {
+                        'slug': 'finishing',
+                        'append_note': 'Фасад — планкен, краска 5071 RAL',
+                    }
+                ),
+                content_type='application/json',
+                HTTP_AUTHORIZATION='Bearer test-umnik-token',
+                HTTP_X_UMNIK_ACTOR='admin',
+            )
+        self.assertEqual(first.status_code, 200)
+        self.assertTrue(first.json()['ok'])
+        self.assertTrue(first.json()['changed'])
+        self.assertEqual(second.status_code, 200)
+        self.assertTrue(second.json()['ok'])
+        self.assertFalse(second.json()['changed'])
+        approval = DealApproval.objects.get(deal=self.deal, slug='finishing')
+        self.assertEqual(approval.notes, 'Фасад — планкен, краска 5071 RAL')
+        self.assertEqual(approval.status, DealApproval.Status.WAITING_CLIENT)
+        instruction = DealInstruction.objects.get(approval=approval)
+        self.assertEqual(instruction.requested_by, self.admin)
+        self.assertEqual(instruction.actor_username, 'admin')
+        self.assertEqual(instruction.requested_by_label, 'admin')
+        self.assertNotIn('Пушкин', instruction.requested_by_label)
+        self.assertEqual(instruction.text, 'Фасад — планкен, краска 5071 RAL')
+        self.assertEqual(instruction.source, DealInstruction.Source.CHAT)
+        self.assertEqual(instruction.kind, DealInstruction.Kind.APPROVAL)
+        self.assertEqual(DealInstruction.objects.filter(approval=approval).count(), 1)
+
+
+class DealDesignSectionsTests(TestCase):
+    def setUp(self):
+        self.deal = Deal.objects.create(
+            project_code='3МД-Иванов-Пулково',
+            module_count=3,
+            status=Deal.Status.NEW,
+        )
+
+    def test_default_sections_merge_ov_vk_and_add_canopies(self):
+        from deals.services.design import ensure_deal_design_sections
+
+        items = ensure_deal_design_sections(self.deal)
+        slugs = [item.slug for item in items]
+        titles = {item.slug: item.title for item in items}
+
+        self.assertIn('ov_vk', slugs)
+        self.assertEqual(titles['ov_vk'], 'ОВ / ВК')
+        self.assertNotIn('plumbing', slugs)
+        self.assertNotIn('hvac', slugs)
+        self.assertIn('canopies', slugs)
+        self.assertEqual(titles['canopies'], 'Навесы/Террасы')
+        canopies = next(item for item in items if item.slug == 'canopies')
+        self.assertFalse(canopies.is_required)
+        self.assertIn('roof_slope', slugs)
+        self.assertEqual(titles['roof_slope'], 'Разуклонка')
+        roof_slope = next(item for item in items if item.slug == 'roof_slope')
+        self.assertFalse(roof_slope.is_required)
+        self.assertEqual(slugs.index('roof_slope'), slugs.index('kr_ceiling') + 1)
+
+    def test_legacy_ov_and_vk_merge_keeps_files_and_conservative_status(self):
+        from deals.services.design import ensure_deal_design_sections
+
+        plumbing = DealDesignSection.objects.create(
+            deal=self.deal,
+            slug='plumbing',
+            title='ВК',
+            status=DealDesignSection.Status.RELEASED,
+            notes='Разводка ВК готова',
+            is_required=True,
+            sort_order=9,
+        )
+        hvac = DealDesignSection.objects.create(
+            deal=self.deal,
+            slug='hvac',
+            title='ОВ',
+            status=DealDesignSection.Status.IN_PROGRESS,
+            notes='Ждём вентканалы',
+            is_required=True,
+            sort_order=10,
+        )
+        ProjectFile.objects.create(
+            deal=self.deal,
+            design_section=plumbing,
+            source=ProjectFile.Source.SYSTEM,
+            relative_path='design/plumbing/vk.pdf',
+            original_name='vk.pdf',
+        )
+        ProjectFile.objects.create(
+            deal=self.deal,
+            design_section=hvac,
+            source=ProjectFile.Source.SYSTEM,
+            relative_path='design/hvac/ov.pdf',
+            original_name='ov.pdf',
+        )
+
+        items = ensure_deal_design_sections(self.deal)
+        merged = next(item for item in items if item.slug == 'ov_vk')
+
+        self.assertEqual(merged.title, 'ОВ / ВК')
+        self.assertEqual(merged.status, DealDesignSection.Status.IN_PROGRESS)
+        self.assertIn('Разводка ВК готова', merged.notes)
+        self.assertIn('Ждём вентканалы', merged.notes)
+        self.assertEqual(merged.files.count(), 2)
+        self.assertFalse(DealDesignSection.objects.filter(deal=self.deal, slug='plumbing').exists())
+        self.assertFalse(DealDesignSection.objects.filter(deal=self.deal, slug='hvac').exists())
+
+    def test_attach_file_to_design_section_is_idempotent(self):
+        from deals.services.design import attach_file_to_design_section
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            src = root / 'разуклонка кровли.pdf'
+            src.write_bytes(b'%PDF-1.4 test')
+            with override_settings(CRM_FILES_ROOT=root):
+                first = attach_file_to_design_section(
+                    self.deal,
+                    slug='roof_slope',
+                    source_path=str(src),
+                    title='Разуклонка',
+                )
+                second = attach_file_to_design_section(
+                    self.deal,
+                    slug='roof_slope',
+                    source_path=str(src),
+                    title='Разуклонка',
+                )
+
+        self.assertTrue(first['ok'])
+        self.assertFalse(first['reused'])
+        self.assertTrue(second['ok'])
+        self.assertTrue(second['reused'])
+        self.assertEqual(first['file']['id'], second['file']['id'])
+        self.assertEqual(ProjectFile.objects.filter(deal=self.deal).count(), 1)
+        section = DealDesignSection.objects.get(deal=self.deal, slug='roof_slope')
+        self.assertEqual(section.title, 'Разуклонка')
+        dest = Path(first['file']['relative_path'])
+        self.assertEqual(dest.as_posix().split('/')[-2], 'roof_slope')
 
 

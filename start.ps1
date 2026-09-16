@@ -46,33 +46,69 @@ function Test-PortOpen {
     }
 }
 
+function Test-UmnikReady {
+    try {
+        $response = Invoke-WebRequest -Uri "http://127.0.0.1:7861/crm/health" -UseBasicParsing -TimeoutSec 2
+        return ($response.StatusCode -ge 200 -and $response.StatusCode -lt 400)
+    } catch {
+        return $false
+    }
+}
+
+function Start-UmnikProxy {
+    param([string]$UmnikRoot, [string]$PythonExe)
+    $bridge = Join-Path $UmnikRoot "proxy_auth_bridge.py"
+    if (-not (Test-Path -LiteralPath $bridge)) {
+        return
+    }
+    if (Test-PortOpen 17880) {
+        Write-Host "Прокси-мост умника уже на :17880." -ForegroundColor Green
+        return
+    }
+    Write-Host "Запускаю прокси-мост умника (:17880)."
+    Start-Process -FilePath $PythonExe -WorkingDirectory $UmnikRoot -WindowStyle Minimized -ArgumentList @(
+        $bridge
+    ) | Out-Null
+}
+
 function Start-Umnik {
     $umnikRoot = if ($env:UMNIK_HOME) { $env:UMNIK_HOME } else { Join-Path $PSScriptRoot "umnik" }
     $py = Join-Path $umnikRoot ".venv\Scripts\python.exe"
     $server = Join-Path $umnikRoot "mcp_server.py"
+    $umnikBat = Join-Path $umnikRoot "start.bat"
 
-    if (Test-PortOpen 7861) {
-        Write-Host "Умник уже слушает :7861." -ForegroundColor Green
+    if (Test-UmnikReady) {
+        Write-Host "Умник архива уже отвечает на :7861 (поиск проектов + чат CRM)." -ForegroundColor Green
+        Start-UmnikProxy -UmnikRoot $umnikRoot -PythonExe $py
         return
     }
-    if (-not (Test-Path -LiteralPath $py) -or -not (Test-Path -LiteralPath $server)) {
-        Write-Host "Умник не найден в $umnikRoot — чат в CRM пока не ответит." -ForegroundColor Yellow
+    if (Test-PortOpen 7861) {
+        Write-Host "Порт :7861 занят, но /crm/health пока молчит. Жду умника..." -ForegroundColor Yellow
+    } elseif (-not (Test-Path -LiteralPath $py) -or -not (Test-Path -LiteralPath $server)) {
+        Write-Host "Умник не найден в $umnikRoot — чат и поиск проектов в CRM пока не ответят." -ForegroundColor Yellow
         Write-Host "Нужны $py и mcp_server.py. Потом снова start.bat."
         return
+    } else {
+        Write-Host "Запускаю второго умника (архив, поиск проектов) на :7861."
+        Write-Host "Окно «Умник архив 7861» не закрывайте."
+        $env:PYTHONUTF8 = "1"
+        $env:MCP_NO_OPENROUTER = "1"
+        if (Test-Path -LiteralPath $umnikBat) {
+            Start-Process -FilePath $umnikBat -WorkingDirectory $umnikRoot | Out-Null
+        } else {
+            Start-Process -FilePath "cmd.exe" -WorkingDirectory $umnikRoot -ArgumentList @(
+                "/k",
+                "title Умник архив 7861 && `"$py`" `"$server`" --http --host 0.0.0.0 --port 7861"
+            ) | Out-Null
+        }
     }
 
-    Write-Host "Запускаю умник (MCP :7861). Это окно не закрывайте."
-    $env:PYTHONUTF8 = "1"
-    $env:MCP_NO_OPENROUTER = "1"
-    Start-Process -FilePath "cmd.exe" -WorkingDirectory $umnikRoot -ArgumentList @(
-        "/k",
-        "title Умник MCP 7861 && `"$py`" `"$server`" --http --host 0.0.0.0 --port 7861"
-    ) | Out-Null
+    Start-UmnikProxy -UmnikRoot $umnikRoot -PythonExe $py
 
     $ready = $false
-    for ($i = 0; $i -lt 30; $i++) {
+    for ($i = 0; $i -lt 45; $i++) {
         Start-Sleep -Seconds 1
-        if (Test-PortOpen 7861) {
+        if (Test-UmnikReady) {
             $ready = $true
             break
         }
@@ -80,10 +116,10 @@ function Start-Umnik {
     }
     Write-Host ""
     if ($ready) {
-        Write-Host "Умник готов." -ForegroundColor Green
+        Write-Host "Умник архива готов: http://127.0.0.1:7861/crm/health" -ForegroundColor Green
     } else {
-        Write-Host "Умник не поднялся за 30 секунд. Смотрите окно «Умник MCP 7861»." -ForegroundColor Yellow
-        Write-Host "CRM при этом уже работает. Чат умника заработает, когда :7861 заговорит."
+        Write-Host "Умник не поднялся за 45 секунд. Смотрите окно «Умник архив 7861»." -ForegroundColor Yellow
+        Write-Host "CRM при этом уже работает. Поиск проектов в чате заработает, когда :7861 ответит."
     }
 }
 
@@ -153,6 +189,7 @@ if ($siteUp) {
 
 Write-Host ""
 Write-Host "Готово. CRM: $appUrl"
-Write-Host "Это окно можно закрыть."
+Write-Host "Умник архива (поиск проектов): http://127.0.0.1:7861/crm/health"
+Write-Host "Это окно можно закрыть. Окно умника оставьте открытым."
 Start-Sleep -Seconds 8
 exit 0

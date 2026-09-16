@@ -15,6 +15,7 @@
                             <th style="min-width:150px">Статус</th>
                             <th>Кто отметил</th>
                             <th>Дата</th>
+                            <th>Кто просил</th>
                             <th style="min-width:220px">Комментарий / основание</th>
                         </tr>
                     </thead>
@@ -67,6 +68,14 @@
                             </td>
                             <td class="small text-muted">{{ item.decided_by.username|default:"—" }}</td>
                             <td class="small text-muted">{% if item.decided_at %}{{ item.decided_at|date:"d.m.Y H:i" }}{% else %}—{% endif %}</td>
+                            <td class="small">
+                                {% if item.last_instruction %}
+                                    <div>{{ item.last_instruction.requested_by_label|default:"—" }}</div>
+                                    <div class="text-muted">{{ item.last_instruction.requested_at|date:"d.m.Y H:i" }}</div>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
                             <td>
                                 <form method="post"
                                       action="{% url 'deal_approval_update' deal.id %}"
