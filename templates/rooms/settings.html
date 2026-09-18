@@ -1,0 +1,24 @@
+{% extends app_base_template|default:'base.html' %}
+
+{% block title %}Настройки{% endblock %}
+
+{% block sidebar %}
+    <div class="tg-head"><h1>Настройки</h1></div>
+    <div class="tg-scroll">
+        <div class="tg-row" style="pointer-events:none;">
+            <div class="tg-avatar" style="background:#3390ec">{{ current_user.get_full_name|default:current_user.username|slice:":1"|upper }}</div>
+            <div class="tg-row-body">
+                <div class="tg-row-title">{{ current_user.get_full_name|default:current_user.username }}</div>
+                <div class="tg-row-preview">{{ current_user.username }}</div>
+            </div>
+        </div>
+        <a class="tg-settings-item" href="{% url rooms_ns|add:':install' %}">На экран Домой</a>
+        <a class="tg-settings-item" href="{% url 'home' %}">Открыть CRM</a>
+        <a class="tg-settings-item" href="{% url 'logout' %}">Выйти</a>
+        <div class="tg-empty">Разделы настроек добавим отдельно: уведомления, тема, устройства.</div>
+    </div>
+{% endblock %}
+
+{% block content %}
+    <div class="tg-placeholder">Настройки скоро появятся здесь</div>
+{% endblock %}

@@ -157,9 +157,9 @@ if (-not (Test-Path -LiteralPath ".env")) {
 }
 
 Write-Host "Запускаю контейнеры..."
-docker compose up -d
+docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d
 if ($LASTEXITCODE -ne 0) {
-    Wait-KeyIfFailed "Не удалось запустить docker compose.`nЕсли ошибка про D:\Общая_Рабочая или D:\Scan_Pdf — создайте эти папки или поправьте пути в docker-compose.yml."
+    Wait-KeyIfFailed "Не удалось запустить docker compose.`nЕсли ошибка про D:\Общая_Рабочая — создайте папку или поправьте путь в docker-compose.windows.yml."
 }
 
 Start-Umnik

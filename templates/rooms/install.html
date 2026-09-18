@@ -1,0 +1,28 @@
+{% extends app_base_template|default:'base.html' %}
+
+{% block title %}На экран Домой{% endblock %}
+
+{% block sidebar %}
+    {% if is_app_shell %}
+        <div class="tg-head">
+            <a class="tg-icon-btn tg-back" href="{% url rooms_ns|add:':settings' %}" aria-label="Назад">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 5l-7 7 7 7"/></svg>
+            </a>
+            <h1>На экран Домой</h1>
+        </div>
+        <div class="tg-scroll p-3">
+            {% include "rooms/_install_body.html" %}
+        </div>
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+    {% if is_app_shell %}
+        <div class="tg-placeholder">Инструкция слева</div>
+    {% else %}
+        <div class="mb-3">
+            <a href="{% url rooms_ns|add:':list' %}" class="small">&larr; К беседам</a>
+        </div>
+        {% include "rooms/_install_body.html" %}
+    {% endif %}
+{% endblock %}

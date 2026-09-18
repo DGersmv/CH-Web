@@ -4,6 +4,7 @@ from deals.models import DealClientPortalOtp, DealClientPortalSession
 
 
 def cleanup_expired_portal_access(_job):
+    """Сессии кабинета. OTP в модели ещё есть, но почту заказчикам не шлём."""
     otp_deleted, _ = DealClientPortalOtp.objects.filter(
         expires_at__lt=timezone.now(),
     ).delete()

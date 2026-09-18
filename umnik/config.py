@@ -3,7 +3,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
-ARCHIVE_ROOT = Path(r"D:\Общая_Рабочая")
 
 
 def _load_env() -> None:
@@ -19,6 +18,37 @@ def _load_env() -> None:
 
 
 _load_env()
+
+ARCHIVE_ROOT = Path(os.environ.get("ARCHIVE_ROOT") or r"D:\Общая_Рабочая")
+# local — один процесс как раньше (разработка).
+# indexer — офис: читает PDF, публикует индекс в S3, поиск CRM не обслуживает.
+# query — облако: тянет индекс, отвечает CRM lookup/chat.
+UMNIK_ROLE = (os.environ.get("UMNIK_ROLE") or "local").strip().lower()
+INDEX_S3_BUCKET = (os.environ.get("INDEX_S3_BUCKET") or "").strip()
+INDEX_S3_PREFIX = (os.environ.get("INDEX_S3_PREFIX") or "umnik-index").strip()
+INDEX_S3_ENDPOINT = (os.environ.get("INDEX_S3_ENDPOINT") or os.environ.get("AWS_S3_ENDPOINT_URL") or "").strip()
+INDEX_S3_REGION = (os.environ.get("INDEX_S3_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "ru-central1").strip()
+INDEX_S3_ACCESS_KEY = (
+    os.environ.get("INDEX_S3_ACCESS_KEY") or os.environ.get("AWS_ACCESS_KEY_ID") or ""
+).strip()
+INDEX_S3_SECRET_KEY = (
+    os.environ.get("INDEX_S3_SECRET_KEY") or os.environ.get("AWS_SECRET_ACCESS_KEY") or ""
+).strip()
+INDEX_SNAPSHOT_DIR = (os.environ.get("INDEX_SNAPSHOT_DIR") or "").strip()
+
+
+def umnik_role() -> str:
+    role = UMNIK_ROLE if UMNIK_ROLE in {"local", "indexer", "query"} else "local"
+    return role
+
+
+def is_indexer() -> bool:
+    return umnik_role() == "indexer"
+
+
+def is_query() -> bool:
+    return umnik_role() == "query"
+
 
 OLLAMA_MODEL = "qwen2.5:14b"
 OLLAMA_NUM_CTX = 4096
@@ -111,12 +141,21 @@ WRITE_TOOLS = frozenset(
         "write_text",
         "make_dir",
         "delete_file",
+        "restart_crm",
         "crm_update_deal",
         "crm_update_config",
         "crm_update_cost",
         "crm_delete_deal",
         "crm_attach_design_file",
         "crm_update_approval",
+    }
+)
+CODE_WRITE_TOOLS = frozenset(
+    {
+        "write_text",
+        "make_dir",
+        "delete_file",
+        "restart_crm",
     }
 )
 CRM_TOOLS = frozenset(
@@ -131,6 +170,7 @@ CRM_TOOLS = frozenset(
         "crm_attach_design_file",
         "crm_update_approval",
         "copy_to_crm",
+        "restart_crm",
     }
 )
 # Обратный вызов в Django CRM (умник на хосте → контейнер на :8001).
@@ -140,10 +180,15 @@ CRM_ROOT = Path(os.environ.get("CRM_ROOT") or str(ROOT.parent))
 # От чьего имени идут crm_* вне чата CRM (Claude Code, тесты): в чате актор
 # берётся из сессии, здесь его некому подставить и Django отвечал unauthorized.
 CRM_DEFAULT_ACTOR = (os.environ.get("CRM_DEFAULT_ACTOR") or "admin").strip()
+PLATFORM_OWNER_USERNAME = (os.environ.get("PLATFORM_OWNER_USERNAME") or "superadmin").strip() or "superadmin"
 
 
 def crm_mode() -> bool:
     return os.environ.get("MCP_CRM_MODE", "").strip().lower() in {"1", "true", "yes"}
+
+
+def edit_code_now() -> bool:
+    return os.environ.get("MCP_EDIT_CODE", "").strip().lower() in {"1", "true", "yes"}
 
 # Claude идёт через CLI и подписку (логин-пароль), а не через API-ключ.
 CLAUDE_SUBSCRIPTION = "claude-подписка"

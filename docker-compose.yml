@@ -49,16 +49,12 @@ services:
     command:
       - sh
       - -c
-      - python manage.py migrate --noinput && python manage.py collectstatic --noinput && if [ "$${DJANGO_SEED_DEMO_DATA}" = "1" ] || [ "$${DJANGO_SEED_DEMO_DATA}" = "true" ] || [ "$${DJANGO_SEED_DEMO_DATA}" = "True" ]; then python manage.py seed_demo_data; fi && exec daphne -b 0.0.0.0 -p 8000 core.asgi:application
+      - python manage.py migrate --noinput && python manage.py ensure_superadmin && python manage.py collectstatic --noinput && if [ "$${DJANGO_SEED_DEMO_DATA}" = "1" ] || [ "$${DJANGO_SEED_DEMO_DATA}" = "true" ] || [ "$${DJANGO_SEED_DEMO_DATA}" = "True" ]; then python manage.py seed_demo_data; fi && exec daphne -b 0.0.0.0 -p 8000 core.asgi:application
     volumes:
       - .:/app
-      # Источники для «вложить файл с сервера» в Общий чат (только чтение).
-      - "D:/Общая_Рабочая:/mnt/rabochaya:ro"
-      - "./umnik:/mnt/scan_pdf:ro"
-      # Кэш моделей faster-whisper — качается один раз, переживает пересборку.
       - whisper_cache:/root/.cache/huggingface
     ports:
-      - "8001:8000"
+      - "${CRM_HTTP_PORT:-8001}:8000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -90,8 +86,6 @@ services:
       - exec python manage.py run_telegram_bot
     volumes:
       - .:/app
-      - "D:/Общая_Рабочая:/mnt/rabochaya:ro"
-      - "./umnik:/mnt/scan_pdf:ro"
       - whisper_cache:/root/.cache/huggingface
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -103,6 +97,27 @@ services:
       app:
         condition: service_started
 
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    container_name: chcrm_caddy
+    profiles: ["https"]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      CRM_DOMAIN: ${CRM_DOMAIN:-227info.online}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./staticfiles:/srv/static:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
 volumes:
   postgres_data:
   whisper_cache:
+  caddy_data:
+  caddy_config:

@@ -141,6 +141,8 @@ class CreateDashboardLeadProjectCodeTests(TestCase):
         self.assertEqual(deal.code_client_name, 'Апатиты')
         self.assertEqual(deal.client.last_name, 'Уточнить')
         self.assertEqual(deal.client.first_name, 'Апатиты')
+        self.assertEqual(deal.client.portal_login_id, str(100000 + deal.client.pk))
+        self.assertTrue(deal.client.check_portal_password('client123'))
 
 
 class DashboardLeadFormTests(TestCase):
@@ -870,12 +872,14 @@ class UmnikChatAccessTests(TestCase):
         response = self.client.get(reverse('deal_detail', kwargs={'pk': self.deal.id}))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="umnik-panel"')
+        self.assertNotContains(response, 'id="umnik-restart-crm"')
 
     def test_admin_sees_chat_widget(self):
         self.client.force_login(self.admin)
         response = self.client.get(reverse('deal_detail', kwargs={'pk': self.deal.id}))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="umnik-panel"')
+        self.assertNotContains(response, 'id="umnik-restart-crm"')
 
     def test_manager_can_post_chat(self):
         self.client.force_login(self.manager)

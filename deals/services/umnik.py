@@ -1,4 +1,4 @@
-"""Клиент архива планировок (умник на LAN). Падения архива карточку сделки не ломают."""
+"""Клиент архива планировок (умный умник на сервере). Падения архива карточку сделки не ломают."""
 from __future__ import annotations
 
 import json
@@ -108,6 +108,69 @@ def _chat_url(base: str) -> str:
     if base.endswith('/crm'):
         return f'{base}/chat'
     return f'{base}/crm/chat'
+
+
+def _restart_url(base: str) -> str:
+    base = (base or '').rstrip('/')
+    if base.endswith('/crm/ops/restart-app'):
+        return base
+    if base.endswith('/crm'):
+        return f'{base}/ops/restart-app'
+    return f'{base}/crm/ops/restart-app'
+
+
+def request_umnik_restart(*, actor: str) -> dict:
+    """Просит хостовый умник сделать docker compose restart app."""
+    base = (getattr(settings, 'UMNIK_URL', '') or '').strip()
+    if not base:
+        return {'ok': False, 'error': 'not_configured'}
+    payload = {'actor': (actor or '').strip()}
+    body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+    headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
+    token = (getattr(settings, 'UMNIK_TOKEN', '') or '').strip()
+    if token:
+        headers['Authorization'] = f'Bearer {token}'
+    if payload['actor']:
+        headers['X-Umnik-Actor'] = payload['actor']
+    request = urllib.request.Request(_restart_url(base), data=body, headers=headers, method='POST')
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            data = json.loads(response.read().decode('utf-8'))
+    except urllib.error.HTTPError as exc:
+        return {'ok': False, 'error': f'http_{exc.code}'}
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
+        return {'ok': False, 'error': 'unreachable'}
+    if not isinstance(data, dict):
+        return {'ok': False, 'error': 'bad_payload'}
+    return data
+
+
+def in_docker() -> bool:
+    from pathlib import Path
+
+    return Path('/.dockerenv').exists()
+
+
+def schedule_self_restart(delay_sec: float = 1.5) -> dict:
+    """Запасной путь: SIGTERM PID 1 внутри контейнера app (compose поднимет снова)."""
+    import os
+    import signal
+    import threading
+
+    if not in_docker():
+        return {'ok': False, 'error': 'not_in_docker'}
+
+    def _kill():
+        import time
+
+        time.sleep(delay_sec)
+        try:
+            os.kill(1, signal.SIGTERM)
+        except OSError:
+            pass
+
+    threading.Thread(target=_kill, daemon=True).start()
+    return {'ok': True, 'via': 'self'}
 
 
 def ask_umnik_chat(*, message: str, history: list, actor: str, deal_id=None, deal_code: str = '', capabilities: dict | None = None, attachments: list | None = None) -> dict:

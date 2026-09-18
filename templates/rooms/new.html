@@ -1,0 +1,28 @@
+{% extends app_base_template|default:'base.html' %}
+
+{% block title %}Новый чат{% endblock %}
+{% block body_class %}{% if is_app_shell %}app-chat{% endif %}{% endblock %}
+
+{% block sidebar %}
+    {% if is_app_shell %}
+        <div class="tg-head">
+            <a class="tg-icon-btn tg-back" href="{% url rooms_ns|add:':list' %}" aria-label="Назад">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 5l-7 7 7 7"/></svg>
+            </a>
+            <h1>Новый чат</h1>
+        </div>
+        {% include "rooms/_new_form.html" %}
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+    {% if is_app_shell %}
+        <div class="tg-placeholder">Отметьте, с кем открыть чат</div>
+    {% else %}
+        <div class="mb-3">
+            <a href="{% url rooms_ns|add:':list' %}" class="small">&larr; К беседам</a>
+        </div>
+        <h1 class="h4 mb-3">Новый чат</h1>
+        {% include "rooms/_new_form.html" %}
+    {% endif %}
+{% endblock %}

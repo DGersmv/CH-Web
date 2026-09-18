@@ -4,7 +4,7 @@ import threading
 import time
 from typing import Callable
 
-from config import SYNC_INTERVAL_SEC
+from config import SYNC_INTERVAL_SEC, is_indexer, is_query
 from plugins.base import Plugin, SyncStats
 
 
@@ -62,13 +62,32 @@ class Watcher:
             self.message = "синхронизация…"
         try:
             collected: dict[str, SyncStats] = {}
-            for plugin in self.plugins:
+            if is_query():
+                from index_remote import pull
 
-                def progress(m: str, name: str = plugin.name) -> None:
+                def progress(m: str) -> None:
                     with self.lock:
-                        self.message = f"{name}: {m}"
+                        self.message = f"index: {m}"
 
-                collected[plugin.name] = plugin.sync(progress=progress)
+                first = self.plugins[0] if self.plugins else None
+                if first is not None:
+                    collected["index"] = pull(first, progress=progress)
+            else:
+                for plugin in self.plugins:
+
+                    def progress(m: str, name: str = plugin.name) -> None:
+                        with self.lock:
+                            self.message = f"{name}: {m}"
+
+                    collected[plugin.name] = plugin.sync(progress=progress)
+                if is_indexer() and self.plugins:
+                    from index_remote import publish
+
+                    def publish_progress(m: str) -> None:
+                        with self.lock:
+                            self.message = f"index: {m}"
+
+                    collected["index"] = publish(self.plugins[0], progress=publish_progress)
             with self.lock:
                 self.last_stats = collected
                 self.last_finished = time.time()

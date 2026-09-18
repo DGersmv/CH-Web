@@ -1,0 +1,62 @@
+{% extends app_base_template|default:'base.html' %}
+
+{% block title %}Чаты{% endblock %}
+
+{% block sidebar %}
+    {% if is_app_shell %}
+        <div class="tg-head">
+            <h1>Чаты</h1>
+            <a class="tg-icon-btn" href="{% url rooms_ns|add:':new' %}" title="Написать" aria-label="Написать">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20l4.5-1L20 7.5 16.5 4 5 15.5 4 20z"/><path d="M14 6l4 4"/></svg>
+            </a>
+        </div>
+        <label class="tg-search">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8d969c" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
+            <input type="search" id="tg-search" placeholder="Поиск" autocomplete="off">
+        </label>
+        {% include "rooms/_chat_filters.html" %}
+        {% include "rooms/_chat_rows.html" %}
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+    {% if is_app_shell %}
+        <div class="tg-placeholder">Выберите чат, чтобы начать переписку</div>
+    {% else %}
+        <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
+            <h1 class="h4 mb-0">Беседы</h1>
+            <a class="btn btn-primary" href="{% url rooms_ns|add:':new' %}">Написать</a>
+        </div>
+        <p class="text-muted small">Выберите, с кем говорить. Умника можно добавить в новый чат или позже. <a href="{% url 'app:install' %}">Поставить на телефон</a></p>
+        {% if rooms %}
+            <div class="list-group">
+                {% for room in rooms %}
+                    <a href="{{ room.url }}" class="list-group-item list-group-item-action">
+                        <div class="d-flex justify-content-between">
+                            <strong>{{ room.title }}</strong>
+                            {% if room.unread %}<span class="badge text-bg-primary">{{ room.unread }}</span>{% endif %}
+                        </div>
+                        <div class="small text-muted">{% if room.has_umnik %}Умник в чате · {% endif %}{{ room.last_body|default:"Нет сообщений" }}</div>
+                    </a>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="card"><div class="card-body text-muted">Пока нет бесед. Нажмите «Написать» и выберите коллег.</div></div>
+        {% endif %}
+    {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var input = document.getElementById('tg-search');
+    if (!input) return;
+    input.addEventListener('input', function () {
+        var q = (input.value || '').toLowerCase();
+        document.querySelectorAll('#chat-rows .tg-row').forEach(function (row) {
+            row.style.display = (row.getAttribute('data-search') || '').toLowerCase().indexOf(q) >= 0 ? '' : 'none';
+        });
+    });
+})();
+</script>
+{% endblock %}

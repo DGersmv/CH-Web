@@ -11,6 +11,7 @@ run_if_enabled() {
 }
 
 run_if_enabled DJANGO_RUN_MIGRATIONS python manage.py migrate --noinput
+run_if_enabled DJANGO_RUN_MIGRATIONS python manage.py ensure_superadmin
 run_if_enabled DJANGO_COLLECTSTATIC python manage.py collectstatic --noinput
 run_if_enabled DJANGO_SEED_DEMO_DATA python manage.py seed_demo_data
 

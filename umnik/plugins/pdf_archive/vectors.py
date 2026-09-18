@@ -33,6 +33,13 @@ class PageIndex:
             )
         return self._collection
 
+    def close(self) -> None:
+        self._collection = None
+        self._client = None
+        import gc
+
+        gc.collect()
+
     def encode_passages(self, texts: list[str]) -> list[list[float]]:
         model = self._embedder()
         prefixed = [f"passage: {t}" for t in texts]

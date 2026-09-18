@@ -38,6 +38,9 @@
     <div class="col-md-6">
         <label class="form-label" for="{{ lead_form.email.id_for_label }}">{{ lead_form.email.label }}</label>
         {{ lead_form.email }}
+        {% if lead_form.email.help_text %}
+            <div class="form-text">{{ lead_form.email.help_text }}</div>
+        {% endif %}
         {% if lead_form.email.errors %}
             <div class="text-danger small">{{ lead_form.email.errors|join:", " }}</div>
         {% endif %}
@@ -45,6 +48,9 @@
     <div class="col-md-6">
         <label class="form-label" for="{{ lead_form.portal_password.id_for_label }}">{{ lead_form.portal_password.label }}</label>
         {{ lead_form.portal_password }}
+        {% if lead_form.portal_password.help_text %}
+            <div class="form-text">{{ lead_form.portal_password.help_text }}</div>
+        {% endif %}
         {% if lead_form.portal_password.errors %}
             <div class="text-danger small">{{ lead_form.portal_password.errors|join:", " }}</div>
         {% endif %}

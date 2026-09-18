@@ -6,8 +6,9 @@ if not exist ".venv\Scripts\python.exe" (
   exit /b 1
 )
 title Умник архив 7861
-echo Umnik archive + CRM API: http://127.0.0.1:7861/crm/health
-echo Keep this window open. Search UI is in CRM: http://localhost:8001/archive/
+echo Umnik indexer/query API: http://127.0.0.1:7861/crm/health
+echo Keep this window open. CRM search talks to the cloud query umnik, not this PC when UMNIK_ROLE=indexer.
+echo Search UI is in CRM: http://localhost:8001/archive/
 echo.
 set PYTHONUTF8=1
 set MCP_NO_OPENROUTER=1

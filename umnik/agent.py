@@ -282,6 +282,8 @@ class Agent:
         user: str = "local",
         extra_prompt: str = "",
         crm: bool = False,
+        edit_code: bool = False,
+        actor: str = "",
     ) -> Iterator[str]:
         global CURRENT_MODEL
         model_id = (model or CURRENT_MODEL or DEFAULT_CHAT_MODEL).strip()
@@ -295,7 +297,14 @@ class Agent:
             if ok:
                 try:
                     yield from self._ask_claude(
-                        user_message, steps, readonly, user, extra_prompt=extra_prompt, crm=crm
+                        user_message,
+                        steps,
+                        readonly,
+                        user,
+                        extra_prompt=extra_prompt,
+                        crm=crm,
+                        edit_code=edit_code,
+                        actor=actor,
                     )
                     return
                 except claude_cli.ClaudeCliError as exc:
@@ -374,6 +383,8 @@ class Agent:
         user: str,
         extra_prompt: str = "",
         crm: bool = False,
+        edit_code: bool = False,
+        actor: str = "",
     ) -> Iterator[str]:
         """Claude по подписке. Историю держит сам CLI — он помнит сессию."""
         import claude_cli
@@ -387,6 +398,8 @@ class Agent:
             readonly=readonly,
             extra_prompt=extra_prompt,
             crm=crm,
+            edit_code=edit_code,
+            actor=actor,
         ):
             if kind == "tool":
                 steps.append(f"вызываю **{payload}**")

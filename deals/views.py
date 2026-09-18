@@ -1463,12 +1463,12 @@ def save_deal_electrical(request, deal_id):
 CLIENT_PORTAL_COOKIE = 'client_portal_token'
 
 
-def _client_portal_context(deal, *, notice=None, error=None, email=None):
+def _client_portal_context(deal, *, notice=None, error=None, login_id=None):
     return {
         'deal': deal,
         'notice': notice,
         'error': error,
-        'email': email or '',
+        'login_id': login_id or '',
     }
 
 
@@ -1487,33 +1487,34 @@ def client_portal_entry(request, deal_id):
 
 
 @require_POST
-def client_portal_send_otp(request, deal_id):
+def client_portal_login(request, deal_id):
     deal = get_object_or_404(Deal.objects.select_related('client'), pk=deal_id)
-    email = (request.POST.get('email') or '').strip()
+    login_id = (request.POST.get('login_id') or request.POST.get('email') or '').strip()
     password = (request.POST.get('password') or '').strip()
     client = deal.client
     if client is None:
         return render(
             request,
             'client_portal/entry.html',
-            _client_portal_context(deal, error='Клиент не привязан к сделке.', email=email),
+            _client_portal_context(deal, error='Клиент не привязан к сделке.', login_id=login_id),
             status=400,
         )
-    if email.lower() != (client.email or '').strip().lower():
+    expected_id = (client.portal_login_id or '').strip()
+    if not expected_id or login_id != expected_id:
         return render(
             request,
             'client_portal/entry.html',
-            _client_portal_context(deal, error='Неверный email или пароль.', email=email),
+            _client_portal_context(deal, error='Неверный ID или пароль.', login_id=login_id),
             status=400,
         )
     if not client.check_portal_password(password):
         return render(
             request,
             'client_portal/entry.html',
-            _client_portal_context(deal, error='Неверный email или пароль.', email=email),
+            _client_portal_context(deal, error='Неверный ID или пароль.', login_id=login_id),
             status=400,
         )
-    token = create_portal_session(deal=deal, email=email)
+    token = create_portal_session(deal=deal, email=f'{client.pk}@id.local')
     response = redirect(reverse('client_portal_chat', kwargs={'deal_id': deal.id}))
     response.set_cookie(
         CLIENT_PORTAL_COOKIE,
@@ -1524,6 +1525,9 @@ def client_portal_send_otp(request, deal_id):
         samesite='Lax',
     )
     return response
+
+
+client_portal_send_otp = client_portal_login
 
 
 def client_portal_chat(request, deal_id):

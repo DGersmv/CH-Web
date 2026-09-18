@@ -7,6 +7,9 @@
         </div>
     </div>
     <div class="card-body py-2">
+        <div class="small text-muted mb-2">
+            Вход заказчика: ID для входа {% if deal.client %}{{ deal.client.portal_login_id|default:"—" }}{% else %}—{% endif %} и пароль кабинета. Почту и OTP не отправляем.
+        </div>
         {% if client_messages_latest %}
             <div class="small text-muted mb-2">
                 Последнее: {{ client_messages_latest.created_at|date:"d.m.Y H:i" }}

@@ -9,6 +9,7 @@ class User(AbstractUser):
         PRODUCTION = 'production', 'Production'
         ADMIN = 'admin', 'Admin'
         HEAD = 'head', 'Head'
+        SUPERADMIN = 'superadmin', 'Superadmin'
 
     role = models.CharField(
         max_length=20,

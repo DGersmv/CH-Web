@@ -1,0 +1,19 @@
+<div class="tg-scroll" id="chat-rows">
+    {% for room in rooms %}
+        <a class="tg-row{% if active_room_id == room.id %} is-active{% endif %}" href="{{ room.url }}" data-search="{{ room.title }} {{ room.last_body }}">
+            <div class="tg-avatar" style="background: {{ room.color }}">{{ room.initials }}</div>
+            <div class="tg-row-body">
+                <div class="tg-row-top">
+                    <div class="tg-row-title">{{ room.title }}</div>
+                    <div class="tg-row-time">{{ room.time }}</div>
+                </div>
+                <div class="tg-row-bottom">
+                    <div class="tg-row-preview">{% if room.has_umnik %}Умник · {% endif %}{{ room.last_body|default:"Нет сообщений" }}</div>
+                    {% if room.unread %}<span class="tg-unread">{{ room.unread }}</span>{% endif %}
+                </div>
+            </div>
+        </a>
+    {% empty %}
+        <div class="tg-empty">Пока нет чатов в этой папке.</div>
+    {% endfor %}
+</div>

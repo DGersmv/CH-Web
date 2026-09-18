@@ -97,7 +97,8 @@ def test_archive_tools_exclude_crm():
     assert "crm_get_deal" not in archive
     assert "crm_attach_design_file" not in archive
     assert "copy_to_crm" not in archive
-    crm = allowed_tools(False, crm=True)
+    crm = allowed_tools(False, crm=True, edit_code=True)
+    crm_staff = allowed_tools(False, crm=True, edit_code=False)
     assert "crm_get_deal" in crm
     assert "crm_delete_deal" in crm
     assert "crm_attach_design_file" in crm
@@ -107,6 +108,12 @@ def test_archive_tools_exclude_crm():
     assert "Read" in crm
     assert "Write" in crm
     assert "Edit" in crm
+    assert "restart_crm" in crm
+    assert "Write" not in crm_staff
+    assert "Edit" not in crm_staff
+    assert "restart_crm" not in crm_staff
+    assert "write_text" not in crm_staff
+    assert "crm_get_deal" in crm_staff
     assert "search_archive_project" in crm
     assert "search_archive_project" in archive
     assert "ask_local_qwen" in archive
@@ -119,7 +126,7 @@ def test_crm_cli_bypasses_permissions_without_comma_tools():
     from claude_cli import build_cli_args
     from config import CRM_ROOT
 
-    args, cwd = build_cli_args(Path("claude.cmd"), "hi", readonly=False, crm=True)
+    args, cwd = build_cli_args(Path("claude.cmd"), "hi", readonly=False, crm=True, edit_code=True)
     assert cwd == str(CRM_ROOT)
     assert "--dangerously-skip-permissions" in args
     assert "--allow-dangerously-skip-permissions" in args
@@ -137,7 +144,19 @@ def test_crm_cli_bypasses_permissions_without_comma_tools():
     assert args[disallowed + 2] == "PowerShell"
 
 
-def test_archive_cli_passes_allowed_tools_separately():
+def test_crm_staff_cli_has_no_write_tools():
+    from pathlib import Path
+
+    from claude_cli import build_cli_args
+
+    args, cwd = build_cli_args(Path("claude.cmd"), "hi", readonly=False, crm=True, edit_code=False)
+    assert "--restricted" in args
+    allowed = args[args.index("--allowed-tools") + 1 : args.index("--disallowed-tools")]
+    assert "Write" not in allowed
+    assert "Edit" not in allowed
+    assert not any("restart_crm" in item for item in allowed)
+    assert not any("write_text" in item for item in allowed)
+    assert any("crm_get_deal" in item for item in allowed)
     from pathlib import Path
 
     from claude_cli import build_cli_args
@@ -407,12 +426,14 @@ def test_ask_local_archive_runs_qwen_not_claude():
 
 def test_claude_prompts_tell_to_call_qwen():
     from claude_cli import SYSTEM_ARCHIVE, SYSTEM_CRM
-    from crm_api import CRM_CHAT_PROMPT
+    from crm_api import CRM_CHAT_PROMPT, CRM_CHAT_PROMPT_OWNER
 
     assert "ask_local_qwen" in SYSTEM_ARCHIVE
-    assert "ask_local_qwen" in SYSTEM_CRM
-    assert "ask_local_qwen" in CRM_CHAT_PROMPT
+    assert "search_layout" in CRM_CHAT_PROMPT
+    assert "не вызывай ask_local_qwen" in CRM_CHAT_PROMPT
     assert "design.py" in SYSTEM_CRM
-    assert "design.py" in CRM_CHAT_PROMPT
+    assert "design.py" in CRM_CHAT_PROMPT_OWNER
+    assert "restart_crm" in CRM_CHAT_PROMPT_OWNER
+    assert "restart_crm" not in CRM_CHAT_PROMPT
     assert "хозблок" in SYSTEM_CRM.lower() or "хозблок" in __import__("domain").GLOSSARY_FOR_MODEL.lower()
 

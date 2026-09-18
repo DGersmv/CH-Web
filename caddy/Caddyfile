@@ -1,0 +1,9 @@
+{$CRM_DOMAIN:227info.online}, www.{$CRM_DOMAIN:227info.online} {
+	encode gzip
+	handle_path /static/* {
+		root * /srv/static
+		file_server
+		header Cache-Control "public, max-age=604800"
+	}
+	reverse_proxy app:8000
+}

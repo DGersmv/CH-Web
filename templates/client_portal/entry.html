@@ -20,16 +20,18 @@
                         <div class="alert alert-success py-2">{{ notice }}</div>
                     {% endif %}
 
-                    <form method="post" action="{% url 'client_portal_send_otp' deal.id %}">
+                    <form method="post" action="{% url 'client_portal_login' deal.id %}">
                         {% csrf_token %}
+                        <p class="small text-muted">
+                            Почта и OTP для входа не используются. Введите ID для входа и пароль, которые выдал менеджер.
+                        </p>
                         <div class="mb-2">
-                            <label class="form-label">Email</label>
-                            <input name="email" type="email" class="form-control" required value="{{ email|default:'' }}">
+                            <label class="form-label">ID для входа</label>
+                            <input name="login_id" type="text" inputmode="numeric" class="form-control" required value="{{ login_id|default:'' }}" autocomplete="username">
                         </div>
                         <div class="mb-2">
                             <label class="form-label">Пароль</label>
-                            <input name="password" type="password" class="form-control" required>
-                            <div class="form-text">Вход по обычной схеме: email + пароль.</div>
+                            <input name="password" type="password" class="form-control" required autocomplete="current-password">
                         </div>
                         <div class="d-flex gap-2">
                             <button class="btn btn-primary" type="submit">Войти</button>
@@ -41,4 +43,3 @@
         </div>
     </div>
 {% endblock %}
-

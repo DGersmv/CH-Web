@@ -47,8 +47,10 @@ class IntegrationTokenCreateForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['owner'].queryset = get_user_model().objects.filter(
-            is_active=True,
+        from accounts.permissions import staff_users_qs
+
+        self.fields['owner'].queryset = staff_users_qs(
+            get_user_model().objects.filter(is_active=True),
         ).order_by('username')
 
 

@@ -6,7 +6,8 @@
 
 Двойной клик по `start.bat` в корне репозитория: Docker + CRM на `http://localhost:8001` и умник на `:7861`.
 
-Поиск планировок — пункт меню **Архив** (`/archive/`) и чат умника. Отдельный сайт Scan_Pdf на `:7860` больше не нужен.
+Поиск планировок — пункт меню **Архив** (`/archive/`) и чат умника. В проде оба
+ходят в облачный query-умник; офисный процесс только обновляет векторный индекс.
 
 Либо вручную:
 2. Скопируй `.env.example` в `.env` и при необходимости измени значения.
@@ -38,6 +39,7 @@ docker compose exec app python manage.py migrate
 ```
 При старте контейнера `app` автоматически выполняются:
 - `python manage.py migrate --noinput`
+- `python manage.py ensure_superadmin`
 - `python manage.py collectstatic --noinput`
 
 По умолчанию сиды не запускаются автоматически. Для разовой инициализации демо-данных:
@@ -78,15 +80,21 @@ docker compose exec app python manage.py migrate
 docker compose exec app python manage.py makemigrations
 ```
 
-## Суперпользователь
+## Владелец системы
 
-Создать суперпользователя:
+Учётка `superadmin` создаётся при старте контейнера командой `ensure_superadmin` (роль не выдаётся в разделе «Сотрудники»).
 
 ```bash
-docker compose exec app python manage.py createsuperuser
+docker compose exec app python manage.py ensure_superadmin
 ```
 
-Админка: `http://localhost:8001/admin/`
+Django admin: `http://localhost:8001/admin/`
+
+## Кабинет заказчика
+
+Почта для клиентов **не используется** (ограничения Роскомнадзора). OTP и письма со ссылкой не отправляем.
+
+Вход: **ID для входа** (колонка «ID входа» в списке «Клиенты», не внутренний № карточки) **+ пароль**, который задаёт менеджер. Ссылка кабинета — тот же сайт, путь `/deals/<id>/client-portal/` (локально порт 8001, в облаке 9090). OTP отключён.
 
 ## Файловое хранилище
 

@@ -9,7 +9,7 @@ import time
 from contextvars import ContextVar
 from pathlib import Path
 
-from config import CRM_TOOLS, DATA_DIR, LAN_READONLY, MCP_TOKEN, WRITE_TOOLS
+from config import CRM_TOOLS, DATA_DIR, LAN_READONLY, MCP_TOKEN, WRITE_TOOLS, CODE_WRITE_TOOLS, edit_code_now
 from net import is_loopback, is_private
 
 CLIENT: ContextVar[str] = ContextVar("mcp_client", default="127.0.0.1")
@@ -38,7 +38,16 @@ def guard_write(tool: str) -> str | None:
             f"{tool} недоступен: подключение из сети ({CLIENT.get()}) работает "
             "только на чтение. Запись в D:\\Scan_Pdf — с самого сервера."
         )
+    if tool in CODE_WRITE_TOOLS and crm_mode_env() and not edit_code_now():
+        return (
+            f"{tool} только у владельца системы (роль superadmin). "
+            "Сотрудник с ролью admin код и Docker не трогает."
+        )
     return None
+
+
+def crm_mode_env() -> bool:
+    return os.environ.get("MCP_CRM_MODE", "").strip().lower() in {"1", "true", "yes"}
 
 
 def guard_crm(tool: str) -> str | None:

@@ -101,7 +101,7 @@
 
 **Что делаем:**
 - `python manage.py startapp clients`
-- Модель `Client`: full_name, phone, email, location (текстовое поле — адрес участка), notes (TextField), created_at, created_by (FK → User).
+- Модель `Client`: ФИО/компания, phone, email (не для входа в кабинет), notes, created_at, created_by. Вход заказчика — ID карточки + пароль, без почты и OTP (ограничения Роскомнадзора).
 - Регистрация в админке с list_display, search_fields.
 
 **Проверить:** в админке можно создать 3-4 тестовых клиента. Поиск работает.

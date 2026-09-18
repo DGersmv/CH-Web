@@ -27,6 +27,7 @@ from config import (
     DATA_DIR,
     OPENROUTER_PROXY,
     ROOT,
+    WRITE_TOOLS,
 )
 from domain import GLOSSARY_FOR_MODEL
 
@@ -73,20 +74,20 @@ PDF, проекты, планировки: сначала search_layout / search
 
 {GLOSSARY_FOR_MODEL}"""
 
-SYSTEM_CRM = f"""Ты умник-разработчик внутри CRM CH-Web. Можно и нужно менять код в {CRM_ROOT}.
+SYSTEM_CRM = f"""Ты умник-разработчик внутри CRM CH-Web. Можно и нужно менять код в {CRM_ROOT}, только если это владелец системы.
 Это Django-проект: templates, deals, core, accounts. Не трогай .env и секреты.
-Права на запись в {CRM_ROOT} уже выданы. Не проси нажать Allow и не останавливайся из‑за «permissions».
+Права на запись в {CRM_ROOT} уже выданы владельцу. Не проси нажать Allow и не останавливайся из‑за «permissions».
 Правь сразу: Edit/Write или mcp__{MCP_NAME}__write_text / make_dir. Если Edit вернул отказ — сразу write_text тем же содержимым.
-После правок напиши, какие файлы изменил и что обновить в браузере (шаблон — Ctrl+F5; Python — docker compose restart app).
+После правок Python вызови mcp__{MCP_NAME}__restart_crm (только контейнер app). Шаблон в браузере — Ctrl+F5.
 Сделки и цифры: crm_whoami, crm_search_deals, crm_get_deal, crm_update_deal, crm_update_config, crm_update_cost, crm_delete_deal, crm_attach_design_file, crm_update_approval.
 «Добавь в согласования …» (материал, цвет, RAL, решение клиента) — crm_update_approval
 (deal_id, slug, append_note). Фасад и отделка — slug finishing, не пиши миграцию и не правь шаблон.
 Права как у человека в чате. Admin может crm_delete_deal.
 PDF из чата в раздел «Проектирование» — crm_attach_design_file (deal_id, slug, attachment_id или source_path, title). Не пиши data-миграции Django ради файла на одной сделке.
-Шаблон разделов для всех сделок — DEFAULT_DESIGN_SECTIONS в deals/services/design.py, потом docker compose restart app.
+Шаблон разделов для всех сделок — DEFAULT_DESIGN_SECTIONS в deals/services/design.py, потом restart_crm.
 Раздел «Проектирование», чек-лист, объединение ОВ/ВК, вкладки, формы — правь код в {CRM_ROOT} (deals/services/design.py). Это не архив.
-«Найди / поищи / какие есть» по проектам, хозблокам, планировкам, PDF — ask_local_qwen
-(локальный Qwen 14B, архив {ARCHIVE_ROOT}). Не пиши «ничего не нашлось», пока не вызвал Qwen.
+«Найди / поищи / какие есть» по проектам, хозблокам, планировкам, PDF — search_layout / search_pdf / search_archive_project по индексу на этом сервере. Не вызывай ask_local_qwen ради поиска CRM.
+Не пиши «ничего не нашлось», пока не вызвал поиск по индексу.
 Правки кода и сделок — сам, без Qwen. Параллельно можно crm_search_deals.
 Не представляйся только помощником по архиву.
 После инструментов всегда напиши, что сделал. Не оставляй ответ пустым.
@@ -165,18 +166,24 @@ def proxy_env(*, sandbox: bool = False) -> dict[str, str]:
     return env
 
 
-def write_mcp_config(readonly: bool, crm: bool = False) -> Path:
+def write_mcp_config(readonly: bool, crm: bool = False, actor: str = "", edit_code: bool = False) -> Path:
     """Конфиг MCP для CLI. Архив он поднимает сам, по stdio."""
     py = ROOT / ".venv" / "Scripts" / "python.exe"
+    linux_py = ROOT / ".venv" / "bin" / "python"
     env = {"PYTHONUTF8": "1", "MCP_NO_OPENROUTER": "1"}
     if readonly:
         env["MCP_FORCE_READONLY"] = "1"
     if crm:
         env["MCP_CRM_MODE"] = "1"
+    if actor:
+        env["CRM_ACTOR"] = actor
+    if edit_code and not readonly:
+        env["MCP_EDIT_CODE"] = "1"
+    command = str(py if py.is_file() else linux_py if linux_py.is_file() else "python")
     block = {
         "mcpServers": {
             MCP_NAME: {
-                "command": str(py if py.is_file() else "python"),
+                "command": command,
                 "args": [str(ROOT / "mcp_server.py")],
                 "cwd": str(ROOT),
                 "env": env,
@@ -212,6 +219,7 @@ def write_crm_settings() -> Path:
                 f"mcp__{MCP_NAME}__write_text",
                 f"mcp__{MCP_NAME}__make_dir",
                 f"mcp__{MCP_NAME}__delete_file",
+                f"mcp__{MCP_NAME}__restart_crm",
                 f"mcp__{MCP_NAME}__*",
             ]
         },
@@ -265,23 +273,30 @@ def _trust_crm_project() -> None:
         pass
 
 
-def allowed_tool_list(readonly: bool, crm: bool = False) -> list[str]:
+def allowed_tool_list(readonly: bool, crm: bool = False, edit_code: bool = False) -> list[str]:
     """Имена инструментов отдельными аргументами. Запятая на Windows режет argv."""
+    from config import CODE_WRITE_TOOLS
+
     names = list(READ_TOOLS)
     if not readonly:
-        names.extend(WRITE_TOOLS)
+        if edit_code:
+            names.extend(WRITE_TOOLS)
+        else:
+            names.extend(item for item in WRITE_TOOLS if item not in CODE_WRITE_TOOLS)
     if crm:
         names.extend(sorted(CRM_TOOLS))
+        if not edit_code:
+            names = [item for item in names if item not in CODE_WRITE_TOOLS]
     prefixes = (MCP_NAME,)
     parts: list[str] = []
-    if crm:
+    if crm and edit_code:
         parts.extend(DEV_TOOLS)
     parts.extend(f"mcp__{prefix}__{n}" for prefix in prefixes for n in names)
     return list(dict.fromkeys(parts))
 
 
-def allowed_tools(readonly: bool, crm: bool = False) -> str:
-    return ",".join(allowed_tool_list(readonly, crm=crm))
+def allowed_tools(readonly: bool, crm: bool = False, edit_code: bool = False) -> str:
+    return ",".join(allowed_tool_list(readonly, crm=crm, edit_code=edit_code))
 
 
 def build_cli_args(
@@ -292,8 +307,10 @@ def build_cli_args(
     crm: bool,
     extra_prompt: str = "",
     previous: str | None = None,
+    edit_code: bool = False,
+    actor: str = "",
 ) -> tuple[list[str], str]:
-    cfg = write_mcp_config(readonly, crm=crm)
+    cfg = write_mcp_config(readonly, crm=crm, actor=actor, edit_code=edit_code and not readonly)
     system = SYSTEM_CRM if crm else SYSTEM_ARCHIVE
     if extra_prompt.strip():
         system = system + "\n\n" + extra_prompt.strip()
@@ -317,26 +334,30 @@ def build_cli_args(
     ]
     workdir = str(ROOT)
     if crm:
-        # Без --allowed-tools Write/Edit Claude Code в -p отклоняет запись как user-rejected.
-        settings = write_crm_settings()
-        workdir = str(CRM_ROOT)
+        args += ["--allowed-tools", *allowed_tool_list(readonly, crm=True, edit_code=edit_code)]
         args += [
-            "--add-dir",
-            str(CRM_ROOT),
-            "--settings",
-            str(settings),
-            "--allowed-tools",
-            *allowed_tool_list(readonly, crm=True),
-            "--permission-mode",
-            "bypassPermissions",
-            "--allow-dangerously-skip-permissions",
-            "--dangerously-skip-permissions",
             "--disallowed-tools",
             "Bash",
             "PowerShell",
             "WebFetch",
             "WebSearch",
         ]
+        if edit_code:
+            # Без --allowed-tools Write/Edit Claude Code в -p отклоняет запись как user-rejected.
+            settings = write_crm_settings()
+            workdir = str(CRM_ROOT)
+            args += [
+                "--add-dir",
+                str(CRM_ROOT),
+                "--settings",
+                str(settings),
+                "--permission-mode",
+                "bypassPermissions",
+                "--allow-dangerously-skip-permissions",
+                "--dangerously-skip-permissions",
+            ]
+        else:
+            args += ["--restricted"]
     else:
         args += ["--restricted", "--allowed-tools", *allowed_tool_list(readonly, crm=False)]
     if CLAUDE_CLI_MODEL:
@@ -473,6 +494,8 @@ def ask_stream(
     new_dialog: bool = False,
     extra_prompt: str = "",
     crm: bool = False,
+    edit_code: bool = False,
+    actor: str = "",
 ) -> Iterator[tuple[str, str]]:
     """Отдаёт пары (вид, текст): ('tool', имя) | ('text', кусок) | ('done', ответ)."""
     cli = find_cli()
@@ -481,7 +504,7 @@ def ask_stream(
             "Claude CLI не установлен. На сервере выполни:\n"
             "npm install -g @anthropic-ai/claude-code\nзатем: claude login"
         )
-    if crm:
+    if crm and edit_code:
         _trust_crm_project()
     # CRM: история уже в тексте вопроса. --resume тащит личность «архивного» умника.
     previous = None if (new_dialog or crm) else _session_for(user)
@@ -492,6 +515,8 @@ def ask_stream(
         crm=crm,
         extra_prompt=extra_prompt,
         previous=previous,
+        edit_code=edit_code,
+        actor=actor,
     )
 
     if not _gate.acquire(timeout=CLAUDE_TIMEOUT_SEC):

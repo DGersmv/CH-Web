@@ -1,6 +1,8 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
+from accounts.permissions import assignable_role_choices, staff_users_qs
+
 from .models import DirectMessage, Notification, User
 
 
@@ -13,6 +15,14 @@ class UserAdmin(BaseUserAdmin):
         ('Role', {'fields': ('role',)}),
     )
     list_display = ('username', 'email', 'first_name', 'last_name', 'role', 'is_staff')
+
+    def get_queryset(self, request):
+        return staff_users_qs(super().get_queryset(request))
+
+    def formfield_for_choice_field(self, db_field, request, **kwargs):
+        if db_field.name == 'role':
+            kwargs['choices'] = assignable_role_choices()
+        return super().formfield_for_choice_field(db_field, request, **kwargs)
 
 
 @admin.register(DirectMessage)

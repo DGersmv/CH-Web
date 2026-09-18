@@ -1,0 +1,15 @@
+{% extends app_base_template|default:'base.html' %}
+
+{% block title %}Звонки{% endblock %}
+
+{% block sidebar %}
+    <div class="tg-head"><h1>Звонки</h1></div>
+    <div class="tg-empty">
+        Умник уже слушает голосовые в чатах, где он участник: наговорите в чат — он расшифрует и ответит.
+        Живые конференц-звонки с ним в одной комнате подключим отдельно.
+    </div>
+{% endblock %}
+
+{% block content %}
+    <div class="tg-placeholder">Голосовые в чате Умник уже слышит</div>
+{% endblock %}

@@ -1,6 +1,8 @@
 from django import forms
 from django.contrib.auth import get_user_model
 
+from accounts.permissions import ASSIGNABLE_ROLES, OWNER_ROLE, assignable_role_choices
+
 
 class EmployeeCreateForm(forms.ModelForm):
     password = forms.CharField(label='Пароль', widget=forms.PasswordInput(attrs={'class': 'form-control form-control-sm'}))
@@ -16,6 +18,16 @@ class EmployeeCreateForm(forms.ModelForm):
             'role': forms.Select(attrs={'class': 'form-select form-select-sm'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['role'].choices = assignable_role_choices()
+
+    def clean_role(self):
+        role = self.cleaned_data.get('role')
+        if role == OWNER_ROLE or role not in ASSIGNABLE_ROLES:
+            raise forms.ValidationError('Эту роль нельзя назначить через интерфейс сотрудников.')
+        return role
 
     def save(self, commit=True):
         user = super().save(commit=False)
@@ -33,6 +45,16 @@ class EmployeeUpdateForm(forms.ModelForm):
             'role': forms.Select(attrs={'class': 'form-select form-select-sm'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['role'].choices = assignable_role_choices()
+
+    def clean_role(self):
+        role = self.cleaned_data.get('role')
+        if role == OWNER_ROLE or role not in ASSIGNABLE_ROLES:
+            raise forms.ValidationError('Эту роль нельзя назначить через интерфейс сотрудников.')
+        return role
 
 
 class DashboardMessageForm(forms.Form):

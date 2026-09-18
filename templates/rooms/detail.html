@@ -1,0 +1,392 @@
+{% extends app_base_template|default:'base.html' %}
+
+{% block title %}{{ room_title }}{% endblock %}
+{% block body_class %}{% if is_app_shell %}app-chat{% endif %}{% endblock %}
+
+{% block sidebar %}
+    {% if is_app_shell %}
+        <div class="tg-head">
+            <h1>Чаты</h1>
+            <a class="tg-icon-btn" href="{% url rooms_ns|add:':new' %}" title="Написать" aria-label="Написать">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20l4.5-1L20 7.5 16.5 4 5 15.5 4 20z"/><path d="M14 6l4 4"/></svg>
+            </a>
+        </div>
+        <label class="tg-search">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8d969c" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
+            <input type="search" id="tg-search" placeholder="Поиск" autocomplete="off">
+        </label>
+        {% include "rooms/_chat_filters.html" %}
+        {% include "rooms/_chat_rows.html" %}
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+    {% if is_app_shell %}
+        <div class="tg-chat">
+        <div class="tg-chat-head">
+            <a class="tg-icon-btn tg-back" href="{% url rooms_ns|add:':list' %}" aria-label="Назад">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 5l-7 7 7 7"/></svg>
+            </a>
+            <div class="tg-avatar" style="background: {{ room_color }};width:40px;height:40px;font-size:14px;">{{ room_initials }}</div>
+            <div class="tg-row-body">
+                <div class="tg-row-title">{{ room_title }}</div>
+                <div class="tg-row-preview">{{ people|join:", " }}{% if has_umnik %} · Умник{% endif %}</div>
+            </div>
+            {% if can_use_umnik %}
+                <form method="post" action="{{ umnik_url }}">
+                    {% csrf_token %}
+                    {% if has_umnik %}
+                        <input type="hidden" name="action" value="remove">
+                        <button class="tg-icon-btn" type="submit" title="Убрать Умника">×</button>
+                    {% else %}
+                        <input type="hidden" name="action" value="add">
+                        <button class="tg-icon-btn" type="submit" title="Добавить Умника">+У</button>
+                    {% endif %}
+                </form>
+            {% endif %}
+        </div>
+        <div id="room-messages" class="tg-chat-thread"></div>
+        <form id="room-send-form" class="tg-composer" enctype="multipart/form-data">
+            {% csrf_token %}
+            <div id="tg-attach-chip" class="tg-attach-chip is-hidden"></div>
+            <label class="tg-attach" title="Файл" aria-label="Прикрепить файл">
+                <input type="file" name="files" multiple>
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+            </label>
+            <textarea name="body" rows="1" placeholder="{% if has_umnik %}Сообщение{% else %}Сообщение{% endif %}"></textarea>
+            <button type="button" id="tg-mic" class="tg-mic" aria-label="Наговорить">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v4a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11h-2z"/></svg>
+            </button>
+            <button type="submit" id="tg-send" class="tg-send is-hidden" aria-label="Отправить">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 12l18-9-7 18-2.6-6.4L3 12z"/></svg>
+            </button>
+        </form>
+        <div id="tg-record-bar" class="tg-record-bar is-hidden">
+            <button type="button" id="tg-record-cancel" class="tg-icon-btn" aria-label="Отменить">×</button>
+            <span class="tg-record-dot"></span>
+            <span id="tg-record-time" class="tg-record-time">0:00</span>
+            <button type="button" id="tg-record-send" class="tg-record-send">Отправить</button>
+        </div>
+        <div id="room-send-status" class="small text-muted px-3 pb-1"></div>
+        </div>
+    {% else %}
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-3 flex-wrap">
+            <div>
+                <a href="{% url rooms_ns|add:':list' %}" class="small">&larr; К беседам</a>
+                <h1 class="h4 mb-1">{{ room_title }}</h1>
+                <div class="small text-muted">
+                    {{ people|join:", " }}
+                    {% if has_umnik %}<span class="badge text-bg-dark ms-1">Умник в чате</span>{% endif %}
+                </div>
+            </div>
+            {% if can_use_umnik %}
+                <form id="umnik-toggle-form" method="post" action="{{ umnik_url }}">
+                    {% csrf_token %}
+                    {% if has_umnik %}
+                        <input type="hidden" name="action" value="remove">
+                        <button type="submit" class="btn btn-outline-secondary btn-sm">Убрать Умника</button>
+                    {% else %}
+                        <input type="hidden" name="action" value="add">
+                        <button type="submit" class="btn btn-dark btn-sm">Добавить Умника</button>
+                    {% endif %}
+                </form>
+            {% endif %}
+        </div>
+        <div id="room-thread" class="card mb-3" style="min-height: 50vh;">
+            <div id="room-messages" class="card-body d-flex flex-column gap-2" style="max-height: 60vh; overflow-y: auto;"></div>
+        </div>
+        <form id="room-send-form" class="d-flex flex-column gap-2" enctype="multipart/form-data">
+            {% csrf_token %}
+            <textarea name="body" class="form-control" rows="2" placeholder="{% if has_umnik %}Сообщение. Умнику — начните с «умник, …»{% else %}Сообщение{% endif %}"></textarea>
+            <div class="d-flex gap-2 flex-wrap">
+                <input type="file" name="files" class="form-control" multiple>
+                <button type="submit" class="btn btn-primary">Отправить</button>
+            </div>
+            <div id="room-send-status" class="small text-muted"></div>
+        </form>
+    {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var messagesEl = document.getElementById('room-messages');
+    var form = document.getElementById('room-send-form');
+    var statusEl = document.getElementById('room-send-status');
+    if (!messagesEl || !form) return;
+    var pollUrl = "{{ poll_url|escapejs }}";
+    var sendUrl = "{{ send_url|escapejs }}";
+    var csrf = form.querySelector('[name=csrfmiddlewaretoken]').value;
+    var items = {{ messages_json|safe }};
+    var lastId = 0;
+    var appShell = {{ is_app_shell|yesno:"true,false" }};
+    var bodyInput = form.querySelector('[name=body]');
+    var fileInput = form.querySelector('[name=files]');
+    var micBtn = document.getElementById('tg-mic');
+    var sendBtn = document.getElementById('tg-send');
+    var chipEl = document.getElementById('tg-attach-chip');
+    var recordBar = document.getElementById('tg-record-bar');
+    var recordTimeEl = document.getElementById('tg-record-time');
+    var recordSendBtn = document.getElementById('tg-record-send');
+    var recordCancelBtn = document.getElementById('tg-record-cancel');
+    var recorder = null;
+    var recordStream = null;
+    var recordChunks = [];
+    var recordTimer = null;
+    var recordStartedAt = 0;
+
+    function esc(text) {
+        return (text || '').replace(/[&<>"']/g, function (ch) {
+            return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]);
+        });
+    }
+
+    function hide(el) { if (el) el.classList.add('is-hidden'); }
+    function show(el) { if (el) el.classList.remove('is-hidden'); }
+
+    function updateComposerMode() {
+        var hasText = !!(bodyInput && (bodyInput.value || '').trim());
+        var hasFiles = !!(fileInput && fileInput.files && fileInput.files.length);
+        if (hasText || hasFiles) {
+            hide(micBtn);
+            show(sendBtn);
+        } else {
+            show(micBtn);
+            hide(sendBtn);
+        }
+        if (chipEl) {
+            if (hasFiles) {
+                var names = Array.prototype.map.call(fileInput.files, function (f) { return f.name; }).join(', ');
+                chipEl.textContent = names;
+                show(chipEl);
+            } else {
+                hide(chipEl);
+            }
+        }
+    }
+
+    function renderOne(item) {
+        var wrap = document.createElement('div');
+        var mine = item.author_kind === 'user' && String(item.author_id) === "{{ request.user.id }}";
+        if (appShell) {
+            wrap.className = 'tg-bubble' + (item.author_kind === 'system' ? ' system' : (item.author_kind === 'umnik' ? ' umnik' : (mine ? ' mine' : '')));
+        } else {
+            wrap.className = 'p-2 rounded ' + (item.author_kind === 'system' ? 'bg-light text-muted small' : (item.author_kind === 'umnik' ? 'bg-dark text-white' : (mine ? 'bg-primary text-white align-self-end' : 'bg-white border')));
+            wrap.style.maxWidth = '85%';
+        }
+        var who = item.author_kind === 'system' ? '' : '<div class="small opacity-75">' + esc(item.author_name) + '</div>';
+        var files = (item.attachments || []).map(function (att) {
+            if (att.is_audio || item.kind === 'voice_note') {
+                return '<audio controls preload="metadata" src="' + esc(att.url) + '"></audio>';
+            }
+            var light = mine || item.author_kind === 'umnik';
+            return '<a class="' + (light ? 'text-white' : '') + '" href="' + esc(att.url) + '" target="_blank">' + esc(att.name) + '</a>';
+        }).join('<br>');
+        var body = esc(item.body || '').replace(/\n/g, '<br>');
+        wrap.innerHTML = who + (body ? '<div>' + body + '</div>' : '') + (files ? '<div class="small mt-1">' + files + '</div>' : '');
+        messagesEl.appendChild(wrap);
+        lastId = Math.max(lastId, item.id || 0);
+    }
+
+    function renderAll() {
+        messagesEl.innerHTML = '';
+        lastId = 0;
+        items.forEach(renderOne);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function pull() {
+        fetch(pollUrl + '?after=' + lastId, {credentials: 'same-origin'}).then(function (res) {
+            return res.json();
+        }).then(function (data) {
+            (data.items || []).forEach(function (item) {
+                if (item.id > lastId) {
+                    items.push(item);
+                    renderOne(item);
+                    messagesEl.scrollTop = messagesEl.scrollHeight;
+                    if (item.author_kind === 'umnik' && statusEl) statusEl.textContent = '';
+                }
+            });
+        }).catch(function () {});
+    }
+
+    function sendFormData(data) {
+        if (form.dataset.busy === '1') return;
+        form.dataset.busy = '1';
+        if (sendBtn) sendBtn.disabled = true;
+        if (statusEl) statusEl.textContent = 'Отправка…';
+        fetch(sendUrl, {method: 'POST', body: data, credentials: 'same-origin', headers: {'X-CSRFToken': csrf}}).then(function (res) {
+            return res.json().then(function (payload) { return {ok: res.ok, payload: payload}; });
+        }).then(function (result) {
+            form.dataset.busy = '0';
+            if (sendBtn) sendBtn.disabled = false;
+            if (!result.ok) {
+                if (statusEl) statusEl.textContent = 'Напишите текст, приложите файл или наговорите.';
+                return;
+            }
+            if (bodyInput) bodyInput.value = '';
+            if (fileInput) fileInput.value = '';
+            updateComposerMode();
+            if (statusEl) statusEl.textContent = result.payload.asked_umnik ? 'Умник отвечает…' : '';
+            var msg = result.payload.message;
+            if (msg && msg.id > lastId) {
+                items.push(msg);
+                renderOne(msg);
+            }
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+            pullSoon();
+        }).catch(function () {
+            form.dataset.busy = '0';
+            if (sendBtn) sendBtn.disabled = false;
+            if (statusEl) statusEl.textContent = 'Не отправилось. Проверьте сеть.';
+        });
+    }
+
+    form.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        var data = new FormData(form);
+        if (!(bodyInput.value || '').trim() && !(fileInput.files && fileInput.files.length)) {
+            if (statusEl) statusEl.textContent = 'Напишите текст, приложите файл или наговорите.';
+            return;
+        }
+        sendFormData(data);
+    });
+
+    if (bodyInput) {
+        bodyInput.addEventListener('input', updateComposerMode);
+        bodyInput.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Enter' && !ev.shiftKey) {
+                ev.preventDefault();
+                form.requestSubmit();
+            }
+        });
+    }
+    if (fileInput) fileInput.addEventListener('change', updateComposerMode);
+
+    function pickMime() {
+        var types = ['audio/mp4', 'audio/aac', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg'];
+        for (var i = 0; i < types.length; i += 1) {
+            if (window.MediaRecorder && MediaRecorder.isTypeSupported(types[i])) return types[i];
+        }
+        return '';
+    }
+
+    function formatTime(ms) {
+        var sec = Math.floor(ms / 1000);
+        var m = Math.floor(sec / 60);
+        var s = sec % 60;
+        return m + ':' + (s < 10 ? '0' : '') + s;
+    }
+
+    function stopTracks() {
+        if (!recordStream) return;
+        recordStream.getTracks().forEach(function (track) { track.stop(); });
+        recordStream = null;
+    }
+
+    function stopTimer() {
+        if (recordTimer) {
+            clearInterval(recordTimer);
+            recordTimer = null;
+        }
+    }
+
+    function closeRecorder() {
+        stopTimer();
+        stopTracks();
+        recorder = null;
+        recordChunks = [];
+        hide(recordBar);
+        show(form);
+        updateComposerMode();
+    }
+
+    function startRecording() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof window.MediaRecorder === 'undefined') {
+            if (statusEl) statusEl.textContent = 'Этот браузер не записывает голосовые.';
+            return;
+        }
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+            recordStream = stream;
+            recordChunks = [];
+            var mime = pickMime();
+            recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+            recorder.ondataavailable = function (event) {
+                if (event.data && event.data.size) recordChunks.push(event.data);
+            };
+            recorder.start();
+            recordStartedAt = Date.now();
+            if (recordTimeEl) recordTimeEl.textContent = '0:00';
+            hide(form);
+            show(recordBar);
+            stopTimer();
+            recordTimer = setInterval(function () {
+                if (recordTimeEl) recordTimeEl.textContent = formatTime(Date.now() - recordStartedAt);
+            }, 250);
+        }).catch(function () {
+            if (statusEl) statusEl.textContent = 'Разрешите микрофон, чтобы наговорить сообщение.';
+        });
+    }
+
+    function finishRecording(sendIt) {
+        if (!recorder) {
+            closeRecorder();
+            return;
+        }
+        recorder.onstop = function () {
+            var blob = new Blob(recordChunks, { type: recorder.mimeType || 'audio/webm' });
+            var mime = blob.type || 'audio/webm';
+            closeRecorder();
+            if (!sendIt || blob.size < 400) {
+                if (statusEl) statusEl.textContent = sendIt ? 'Слишком коротко, наговорите ещё раз.' : '';
+                return;
+            }
+            var ext = mime.indexOf('mp4') >= 0 || mime.indexOf('aac') >= 0 ? 'm4a' : (mime.indexOf('ogg') >= 0 ? 'ogg' : 'webm');
+            var file = new File([blob], 'voice_message_' + Date.now() + '.' + ext, { type: mime });
+            var data = new FormData();
+            data.append('csrfmiddlewaretoken', csrf);
+            data.append('body', '');
+            data.append('files', file);
+            sendFormData(data);
+        };
+        if (recorder.state === 'recording') recorder.stop();
+        else closeRecorder();
+    }
+
+    if (micBtn) micBtn.addEventListener('click', startRecording);
+    if (recordSendBtn) recordSendBtn.addEventListener('click', function () { finishRecording(true); });
+    if (recordCancelBtn) recordCancelBtn.addEventListener('click', function () { finishRecording(false); });
+
+    function pullSoon() {
+        pull();
+        var n = 0;
+        var fast = setInterval(function () {
+            pull();
+            n += 1;
+            if (n >= 12) clearInterval(fast);
+        }, 1000);
+    }
+
+    var search = document.getElementById('tg-search');
+    if (search) {
+        search.addEventListener('input', function () {
+            var q = (search.value || '').toLowerCase();
+            document.querySelectorAll('#chat-rows .tg-row').forEach(function (row) {
+                row.style.display = (row.getAttribute('data-search') || '').toLowerCase().indexOf(q) >= 0 ? '' : 'none';
+            });
+        });
+    }
+
+    var chatPane = messagesEl.closest('.tg-chat') || messagesEl;
+    chatPane.addEventListener('wheel', function (ev) {
+        if (ev.ctrlKey) return;
+        messagesEl.scrollTop += ev.deltaY;
+        ev.preventDefault();
+    }, { passive: false });
+
+    updateComposerMode();
+    renderAll();
+    setInterval(pull, 2500);
+})();
+</script>
+{% endblock %}

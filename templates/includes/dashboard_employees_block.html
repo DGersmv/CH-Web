@@ -89,7 +89,7 @@
                                 >
                                     {% csrf_token %}
                                     <select name="role" class="form-select form-select-sm">
-                                        {% for value, label in employee.Role.choices %}
+                                        {% for value, label in assignable_role_choices %}
                                             <option value="{{ value }}" {% if employee.role == value %}selected{% endif %}>{{ label }}</option>
                                         {% endfor %}
                                     </select>

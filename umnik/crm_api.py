@@ -14,23 +14,36 @@ LAYOUT_LIMIT = 5
 LAYOUT_LIMIT_MAX = 40
 ROOM_LIMIT = 20
 
-CRM_CHAT_PROMPT = """Ты умник-разработчик CRM CH-Web и помощник по сделкам.
+CRM_CHAT_PROMPT = """Ты умник CRM CH-Web и помощник по сделкам.
+Сделки и цифры — инструменты crm_*. Файл из чата в раздел сделки — crm_attach_design_file
+(deal_id, slug, attachment_id или source_path, title).
+«Добавь в согласования …» (материал, цвет, RAL, решение клиента) — crm_update_approval
+(deal_id, slug, append_note). Фасад и отделка — slug finishing.
+Не пиши и не правь код проекта, шаблоны, миграции и Docker.
+«Найди / поищи / какие есть проекты, хозблоки, планировки, PDF» — это архив:
+вызови search_layout / search_pdf / search_archive_project по индексу на этом сервере.
+Не ходи в офисный умник и не вызывай ask_local_qwen ради поиска.
+Не отвечай «ничего не нашлось», пока не вызвал поиск по индексу. Параллельно можно crm_search_deals.
+После инструментов всегда напиши, что сделал."""
+
+CRM_CHAT_PROMPT_OWNER = """Ты умник-разработчик CRM CH-Web и помощник по сделкам.
 Код проекта — папка CRM (родитель umnik/). Писать в файлы уже можно — не проси Allow.
 Вопросы про вкладки, меню «Состояние проекта», формы, раздел «Проектирование»,
-чек-лист разделов (объединить ОВ/ВК, добавить Навесы/Террасы) — сразу открывай
-файлы в D:\\CH-CRM и меняй код. Шаблон разделов: deals/services/design.py.
+чек-лист разделов — сразу открывай файлы в CRM_ROOT и меняй код.
+Шаблон разделов: deals/services/design.py.
 Если Edit отказал — вызови mcp__arhiv__write_text. Сделки и цифры — инструменты crm_*.
 Файл из чата в раздел сделки — crm_attach_design_file (deal_id, slug, attachment_id или source_path, title).
 «Добавь в согласования …» (материал, цвет, RAL, решение клиента) — crm_update_approval
 (deal_id, slug, append_note). Фасад и отделка — slug finishing.
 Не пиши и не правь deals/migrations ради PDF или пункта чек-листа на одной сделке.
-Шаблон для всех сделок — DEFAULT_DESIGN_SECTIONS, потом docker compose restart app.
+Шаблон для всех сделок — DEFAULT_DESIGN_SECTIONS, потом вызови restart_crm
+(это docker compose restart app, не базу и не умника).
 «Найди / поищи / какие есть проекты, хозблоки, планировки, PDF» — это архив:
-вызови ask_local_qwen с формулировкой человека (локальный Qwen 14B, сам ходит
-в search_layout / search_pdf / search_archive_project). Не отвечай «ничего не нашлось»,
-пока не вызвал Qwen. Параллельно можно crm_search_deals.
-Правки кода и сделок — сам, без Qwen.
-После правок кода скажи, что обновить в браузере.
+вызови search_layout / search_pdf / search_archive_project по индексу на этом сервере.
+Не ходи в офисный умник и не вызывай ask_local_qwen ради поиска.
+Не отвечай «ничего не нашлось», пока не вызвал поиск по индексу. Параллельно можно crm_search_deals.
+Правки кода и сделок — сам, без Qwen. Не трогай .env и секреты.
+После правок кода вызови restart_crm, если менял Python, и скажи, что обновить в браузере.
 Не пиши «готов работать с архивом». После инструментов всегда напиши, что сделал."""
 
 CRM_HELLO = (
@@ -281,6 +294,12 @@ def lookup_archive(query: str, *, limit: int = LAYOUT_LIMIT) -> dict:
     layouts = [compact_layout(row) for row in rows]
     if layouts:
         return {"ok": True, "query": q, "layouts": layouts}
+    from config import is_query
+
+    if is_query():
+        hits = plugin().search(q, limit=limit)
+        extra = [file_as_layout(hit.path) for hit in hits[:limit]]
+        return {"ok": True, "query": q, "layouts": extra}
     found = search_project(q)
     extra = [file_as_layout(path) for path in (found.get("pdfs") or [])[:limit]]
     return {"ok": True, "query": q, "layouts": extra}
@@ -356,6 +375,17 @@ def format_chat_attachments(attachments) -> str:
     return "\n".join(lines)
 
 
+def resolve_edit_code(actor: str, caps) -> bool:
+    from ops import actor_may_restart, confirm_owner_via_crm
+
+    if actor_may_restart(actor):
+        return True
+    try:
+        return confirm_owner_via_crm(actor)
+    except Exception:
+        return False
+
+
 def run_crm_chat(payload: dict) -> dict:
     import crm_bridge
     from agent import strip_thinking
@@ -375,22 +405,34 @@ def run_crm_chat(payload: dict) -> dict:
     deal_id = (payload or {}).get("deal_id")
     deal_code = str((payload or {}).get("deal_code") or "").strip()
     history = (payload or {}).get("history") or []
-    extra = CRM_CHAT_PROMPT
     caps = (payload or {}).get("capabilities")
+    token = crm_bridge.ACTOR.set(actor)
+    try:
+        edit_code = resolve_edit_code(actor, caps)
+    except Exception:
+        from ops import actor_may_restart
+
+        edit_code = actor_may_restart(actor, caps if isinstance(caps, dict) else None)
+    extra = CRM_CHAT_PROMPT_OWNER if edit_code else CRM_CHAT_PROMPT
     if isinstance(caps, dict) and caps:
         extra += "\nПрава пользователя: " + json.dumps(caps, ensure_ascii=False)
         if caps.get("can_delete"):
             extra += "\nЭто admin: можно crm_delete_deal. Не пиши, что удалить нельзя."
         else:
             extra += "\nУдалять сделки нельзя: can_delete=false."
+        if edit_code:
+            extra += "\nЭто владелец системы: можно править код и вызвать restart_crm."
+        else:
+            extra += "\nКод и Docker нельзя: can_edit_code=false."
     if deal_id not in (None, ""):
         extra += f"\nСейчас открыта сделка id={deal_id}"
         if deal_code:
             extra += f" «{deal_code}»"
-        extra += ". Если вопрос про цифры или поля этой сделки — crm_get_deal. Решение в согласования — crm_update_approval. Если про интерфейс и код — правь D:\\CH-CRM."
+        extra += ". Если вопрос про цифры или поля этой сделки — crm_get_deal. Решение в согласования — crm_update_approval."
+        if edit_code:
+            extra += " Если про интерфейс и код — правь файлы CRM и при необходимости restart_crm."
     extra += "\n" + format_chat_attachments((payload or {}).get("attachments"))
     extra = extra.strip()
-    token = crm_bridge.ACTOR.set(actor)
     last = ""
     changed = False
     try:
@@ -411,9 +453,11 @@ def run_crm_chat(payload: dict) -> dict:
             user=f"crm-v5:{actor}",
             extra_prompt=extra,
             crm=True,
+            edit_code=edit_code,
+            actor=actor,
         ):
             last = chunk
-            if "crm_update_" in (chunk or "") or "crm_delete_" in (chunk or "") or "crm_attach_" in (chunk or ""):
+            if "crm_update_" in (chunk or "") or "crm_delete_" in (chunk or "") or "crm_attach_" in (chunk or "") or "restart_crm" in (chunk or ""):
                 changed = True
     except Exception as exc:
         return {"ok": False, "error": type(exc).__name__, "answer": f"Умник споткнулся: {exc}"}
@@ -442,10 +486,41 @@ async def chat(request: Request) -> JSONResponse:
     return JSONResponse(result, status_code=status)
 
 
+async def restart_app_http(request: Request) -> JSONResponse:
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    actor = str(payload.get("actor") or request.headers.get("x-umnik-actor") or "").strip()
+    if not actor:
+        return JSONResponse({"ok": False, "error": "no_actor", "answer": "Нужен актор владельца."}, status_code=403)
+
+    def _run():
+        import crm_bridge
+        from ops import confirm_owner_via_crm, restart_crm_app
+
+        token = crm_bridge.ACTOR.set(actor)
+        try:
+            if not confirm_owner_via_crm(actor):
+                return {"ok": False, "error": "forbidden", "answer": "Перезапуск только у владельца системы (роль superadmin)."}
+            return restart_crm_app()
+        finally:
+            crm_bridge.ACTOR.reset(token)
+
+    import anyio
+
+    result = await anyio.to_thread.run_sync(_run)
+    status = 200 if result.get("ok") else (403 if result.get("error") == "forbidden" else 503)
+    return JSONResponse(result, status_code=status)
+
+
 def attach_crm_routes(app) -> None:
     app.router.routes.insert(0, Route("/crm/health", health, methods=["GET"]))
     app.router.routes.insert(0, Route("/crm/lookup", lookup, methods=["GET"]))
     app.router.routes.insert(0, Route("/crm/chat", chat, methods=["POST"]))
+    app.router.routes.insert(0, Route("/crm/ops/restart-app", restart_app_http, methods=["POST"]))
 
 
 if __name__ == "__main__":

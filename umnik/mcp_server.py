@@ -43,9 +43,9 @@ if crm_mode():
 Сделки: crm_whoami, crm_search_deals, crm_get_deal, crm_update_deal, crm_update_config, crm_update_cost, crm_delete_deal, crm_attach_design_file
 Согласования (решение клиента, материалы, цвет, RAL) — crm_update_approval (deal_id, slug, append_note)
 Файлы: list_dir, read_text, write_text, copy_to_crm
+Перезапуск контейнера CRM (только владелец системы, роль superadmin): restart_crm
 PDF: search_pdf / search_layout / search_archive_project / look_at_drawing / attach_file
-Разбор PDF и планировок, если таблиц мало — ask_local_qwen (локальный Qwen 14B)
-Ищут проект по имени — search_archive_project, не только crm_search_deals.
+Поиск проектов — по индексу (catalog + chroma) на этом сервере, не через офисный умник.
 Не представляйся только помощником по архиву.
 
 {GLOSSARY_FOR_MODEL}"""
@@ -445,6 +445,28 @@ def copy_to_crm(src: str, dest: str) -> str:
     return guard_crm("copy_to_crm") or fs_copy_to_crm(src, dest)
 
 
+@mcp.tool(
+    description=(
+        "Перезапустить только контейнер CRM (docker compose restart app). "
+        "Не базу, не Redis, не умника. Только владелец системы (роль superadmin)."
+    ),
+    structured_output=False,
+)
+def restart_crm() -> str:
+    blocked = guard_write("restart_crm")
+    if blocked:
+        return blocked
+    blocked = guard_crm("restart_crm")
+    if blocked:
+        return blocked
+    from ops import confirm_owner_via_crm, current_actor, restart_crm_app
+
+    actor = current_actor()
+    if not confirm_owner_via_crm(actor):
+        return "restart_crm только у владельца системы (роль superadmin)."
+    return json.dumps(restart_crm_app(), ensure_ascii=False)
+
+
 _WRITE_WHERE = f"{PROJECT_ROOT} или {CRM_ROOT}" if crm_mode() else str(PROJECT_ROOT)
 
 
@@ -513,11 +535,18 @@ if __name__ == "__main__":
                 file=sys.stderr,
             )
         try:
+            from config import is_query, umnik_role
             from plugins.registry import load_plugins
             from watcher import Watcher
 
-            Watcher(load_plugins()).start(run_immediately=False)
-            print("Индекс архива: фоновое обновление включено.", file=sys.stderr)
+            Watcher(load_plugins()).start(run_immediately=is_query())
+            role = umnik_role()
+            if role == "indexer":
+                print("Индекс архива: сканирую PDF и публикую снимок на сервер.", file=sys.stderr)
+            elif role == "query":
+                print("Индекс архива: забираю снимок с S3, поиск CRM с этого процесса.", file=sys.stderr)
+            else:
+                print("Индекс архива: фоновое обновление включено.", file=sys.stderr)
         except Exception as exc:
             print(f"Индекс архива не запущен: {exc}", file=sys.stderr)
         uvicorn.run(app, host=host, port=port, log_level="warning")

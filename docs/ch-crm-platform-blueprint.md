@@ -53,7 +53,7 @@
 ## Async Jobs Scope
 
 ### What belongs in jobs first
-- Очистка просроченных OTP и client portal sessions
+- Очистка сессий кабинета заказчика (почту и OTP клиентам не шлём)
 - Напоминания по просроченным задачам
 - Поиск “зависших” сделок
 - Генерация производных артефактов по файлам
@@ -72,7 +72,7 @@
 - Endpoint: `POST /api/plugin/project-versions/`
 - Поддерживается аутентификация через `IntegrationTokenAuthentication` и DRF tokens.
 - Управление токенами доступно в `/settings/integrations/`.
-- Outbound к умнику: `GET {UMNIK_URL}/crm/lookup` — комнаты и м² по сделке. Настройки: `UMNIK_URL`, `UMNIK_TOKEN` в `.env`.
+- Outbound к умнику: `GET {UMNIK_URL}/crm/lookup` — комнаты и м² по сделке. `UMNIK_URL` — облачный query-умник, не офисный индексатор. Настройки: `UMNIK_URL`, `UMNIK_TOKEN` в `.env`.
 
 ### Near-term roadmap
 1. Добавить отдельные inbound endpoints по типам интеграций.

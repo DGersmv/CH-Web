@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import json
-import msvcrt
 import os
 import re
 import time
 from collections.abc import Callable
 from pathlib import Path
 
-from config import ARCHIVE_ROOT, LAYOUT_PROGRAM_LIMIT, OPENROUTER_API_KEY, OPENROUTER_MAX_USD, SEARCH_LIMIT, VISION_PAGES_PER_FILE
+from config import ARCHIVE_ROOT, LAYOUT_PROGRAM_LIMIT, OPENROUTER_API_KEY, OPENROUTER_MAX_USD, SEARCH_LIMIT, VISION_PAGES_PER_FILE, is_query
+from filelock import LockBusy, exclusive_lock
 from plugins.base import SearchHit, SyncStats, ToolSpec
 from plugins.pdf_archive.extract import extract_pdf, iter_pdfs, path_meta
 from plugins.pdf_archive.store import Catalog
@@ -110,11 +110,20 @@ def _format_hits(hits: list[SearchHit]) -> str:
 class PdfArchivePlugin:
     name = "pdf_archive"
     title = "Архив PDF"
+    _shared: "PdfArchivePlugin | None" = None
+
+    def __new__(cls):
+        if cls._shared is None:
+            cls._shared = super().__new__(cls)
+        return cls._shared
 
     def __init__(self):
+        if getattr(self, "_ready", False):
+            return
         self.catalog = Catalog()
         self.pages = PageIndex()
         self.root = ARCHIVE_ROOT
+        self._ready = True
 
     def tools(self) -> list[ToolSpec]:
         return [
@@ -488,7 +497,7 @@ class PdfArchivePlugin:
             vision_hits = [h for h in vision_hits if _contains_all(f"{h.path} {h.title}", unique)]
 
         name_hits = self.catalog.search_names(must, limit=limit) if must else []
-        if unique and not name_hits:
+        if unique and not name_hits and not is_query() and self.root.is_dir():
             name_hits = self._live_name_search(unique, types, limit=limit)
 
         if unique:
@@ -684,97 +693,69 @@ class PdfArchivePlugin:
         log = progress or (lambda _m: None)
         budget = OPENROUTER_MAX_USD if max_usd is None else max_usd
         lock_path = self.catalog.dir / "layout.lock"
-        lock_fp = open(lock_path, "a+b")
         try:
-            if lock_fp.tell() == 0:
-                lock_fp.write(b"0")
-                lock_fp.flush()
-            lock_fp.seek(0)
-            msvcrt.locking(lock_fp.fileno(), msvcrt.LK_NBLCK, 1)
-        except OSError:
-            lock_fp.close()
-            log("очередь OpenRouter уже идёт")
-            return 0
-        try:
-            from plugins.pdf_archive.vision import OpenRouterError
+            with exclusive_lock(lock_path):
+                from plugins.pdf_archive.vision import OpenRouterError
 
-            spent = self.catalog.layout_spent_usd()
-            if spent >= budget:
-                log(f"лимит ${budget:.2f}, уже ${spent:.4f}")
-                return 0
-            paths = self.catalog.pending_layout_paths(
-                limit=batch, name_contains=name_contains
-            )
-            if not paths:
-                log("очередь планировок пуста")
-                return 0
-            n = 0
-            for i, path_s in enumerate(paths, 1):
                 spent = self.catalog.layout_spent_usd()
                 if spent >= budget:
-                    log(f"стоп: лимит ${budget:.2f}")
-                    break
-                path = Path(path_s)
-                log(f"OpenRouter {i}/{len(paths)} ${spent:.4f}: {path.name}")
-                if not path.is_file():
-                    continue
-                try:
-                    cost = self.analyze_layout(path)
-                    n += 1
-                    log(f"  ок +${cost:.4f}")
-                except OpenRouterError as exc:
-                    log(f"OpenRouter: {exc}")
-                    if getattr(exc, "status", 0) in (401, 402, 403):
+                    log(f"лимит ${budget:.2f}, уже ${spent:.4f}")
+                    return 0
+                paths = self.catalog.pending_layout_paths(
+                    limit=batch, name_contains=name_contains
+                )
+                if not paths:
+                    log("очередь планировок пуста")
+                    return 0
+                n = 0
+                for i, path_s in enumerate(paths, 1):
+                    spent = self.catalog.layout_spent_usd()
+                    if spent >= budget:
+                        log(f"стоп: лимит ${budget:.2f}")
                         break
-                except Exception as exc:
-                    log(f"ошибка {path.name}: {exc}")
-            return n
-        finally:
-            try:
-                lock_fp.seek(0)
-                msvcrt.locking(lock_fp.fileno(), msvcrt.LK_UNLCK, 1)
-            except OSError:
-                pass
-            lock_fp.close()
+                    path = Path(path_s)
+                    log(f"OpenRouter {i}/{len(paths)} ${spent:.4f}: {path.name}")
+                    if not path.is_file():
+                        continue
+                    try:
+                        cost = self.analyze_layout(path)
+                        n += 1
+                        log(f"  ок +${cost:.4f}")
+                    except OpenRouterError as exc:
+                        log(f"OpenRouter: {exc}")
+                        if getattr(exc, "status", 0) in (401, 402, 403):
+                            break
+                    except Exception as exc:
+                        log(f"ошибка {path.name}: {exc}")
+                return n
+        except LockBusy:
+            log("очередь OpenRouter уже идёт")
+            return 0
 
     def sync_vision(self, progress: Callable[[str], None] | None = None, batch: int = 6) -> int:
         log = progress or (lambda _m: None)
         lock_path = self.catalog.dir / "vision.lock"
-        lock_fp = open(lock_path, "a+b")
         try:
-            if lock_fp.tell() == 0:
-                lock_fp.write(b"0")
-                lock_fp.flush()
-            lock_fp.seek(0)
-            msvcrt.locking(lock_fp.fileno(), msvcrt.LK_NBLCK, 1)
-        except OSError:
-            lock_fp.close()
+            with exclusive_lock(lock_path):
+                paths = self.catalog.pending_vision_paths(limit=batch)
+                if not paths:
+                    log("очередь зрения пуста")
+                    return 0
+                n = 0
+                for i, path_s in enumerate(paths, 1):
+                    path = Path(path_s)
+                    log(f"зрение {i}/{len(paths)}: {path.name}")
+                    if not path.is_file():
+                        continue
+                    try:
+                        self.analyze_pdf(path)
+                        n += 1
+                    except Exception as exc:
+                        log(f"ошибка зрения {path.name}: {exc}")
+                return n
+        except LockBusy:
             log("зрение уже идёт в другом процессе")
             return 0
-        try:
-            paths = self.catalog.pending_vision_paths(limit=batch)
-            if not paths:
-                log("очередь зрения пуста")
-                return 0
-            n = 0
-            for i, path_s in enumerate(paths, 1):
-                path = Path(path_s)
-                log(f"зрение {i}/{len(paths)}: {path.name}")
-                if not path.is_file():
-                    continue
-                try:
-                    self.analyze_pdf(path)
-                    n += 1
-                except Exception as exc:
-                    log(f"ошибка зрения {path.name}: {exc}")
-            return n
-        finally:
-            try:
-                lock_fp.seek(0)
-                msvcrt.locking(lock_fp.fileno(), msvcrt.LK_UNLCK, 1)
-            except OSError:
-                pass
-            lock_fp.close()
 
     def _live_name_search(
         self, unique: list[str], types: list[str], limit: int
@@ -822,30 +803,14 @@ class PdfArchivePlugin:
             return stats
 
         lock_path = self.catalog.dir / "sync.lock"
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        lock_fp = open(lock_path, "a+b")
         try:
-            if lock_fp.tell() == 0:
-                lock_fp.write(b"0")
-                lock_fp.flush()
-            lock_fp.seek(0)
-            msvcrt.locking(lock_fp.fileno(), msvcrt.LK_NBLCK, 1)
-        except OSError:
-            lock_fp.close()
+            with exclusive_lock(lock_path):
+                return self._sync_body(stats, log)
+        except LockBusy:
             stats.message = "Индексация уже идёт в другом процессе"
             log(stats.message)
             stats.indexed = self.catalog.count()
             return stats
-
-        try:
-            return self._sync_body(stats, log)
-        finally:
-            try:
-                lock_fp.seek(0)
-                msvcrt.locking(lock_fp.fileno(), msvcrt.LK_UNLCK, 1)
-            except OSError:
-                pass
-            lock_fp.close()
 
     def _sync_body(self, stats: SyncStats, log: Callable[[str], None]) -> SyncStats:
         log("Сканирую PDF на диске…")

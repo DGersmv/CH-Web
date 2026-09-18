@@ -6,72 +6,135 @@
         <a href="{% url 'clients' %}" class="btn btn-outline-secondary">К списку</a>
     </div>
 
-    <div class="card">
-        <div class="card-body">
-            <p class="text-muted small mb-3">
-                Для физлица заполните <strong>фамилию и имя</strong> (отчество по желанию). Для юрлица укажите только <strong>название компании</strong>.
-                Участки задаются в сделках.
-            </p>
-            <form method="post" class="row g-3">
-                {% csrf_token %}
-                {% if form.non_field_errors %}
-                    <div class="col-12">
-                        <div class="alert alert-danger py-2 small mb-0">{{ form.non_field_errors|join:" " }}</div>
+    <form method="post" class="row g-3">
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+            <div class="col-12">
+                <div class="alert alert-danger py-2 small mb-0">{{ form.non_field_errors|join:" " }}</div>
+            </div>
+        {% endif %}
+
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Для физлица заполните <strong>фамилию и имя</strong> (отчество по желанию). Для юрлица укажите только <strong>название компании</strong>.
+                        Участки задаются в сделках.
+                    </p>
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label" for="{{ form.company_name.id_for_label }}">{{ form.company_name.label }}</label>
+                            {{ form.company_name }}
+                            {% if form.company_name.errors %}
+                                <div class="text-danger small">{{ form.company_name.errors|join:", " }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="{{ form.last_name.id_for_label }}">{{ form.last_name.label }}</label>
+                            {{ form.last_name }}
+                            {% if form.last_name.errors %}
+                                <div class="text-danger small">{{ form.last_name.errors|join:", " }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="{{ form.first_name.id_for_label }}">{{ form.first_name.label }}</label>
+                            {{ form.first_name }}
+                            {% if form.first_name.errors %}
+                                <div class="text-danger small">{{ form.first_name.errors|join:", " }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="{{ form.middle_name.id_for_label }}">{{ form.middle_name.label }}</label>
+                            {{ form.middle_name }}
+                            {% if form.middle_name.errors %}
+                                <div class="text-danger small">{{ form.middle_name.errors|join:", " }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.phone.id_for_label }}">{{ form.phone.label }}</label>
+                            {{ form.phone }}
+                            {% if form.phone.errors %}
+                                <div class="text-danger small">{{ form.phone.errors|join:", " }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
+                            {{ form.email }}
+                            {% if form.email.help_text %}
+                                <div class="form-text">{{ form.email.help_text }}</div>
+                            {% endif %}
+                            {% if form.email.errors %}
+                                <div class="text-danger small">{{ form.email.errors|join:", " }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="{{ form.notes.id_for_label }}">{{ form.notes.label }}</label>
+                            {{ form.notes }}
+                            {% if form.notes.errors %}
+                                <div class="text-danger small">{{ form.notes.errors|join:", " }}</div>
+                            {% endif %}
+                        </div>
                     </div>
-                {% endif %}
-                <div class="col-12">
-                    <label class="form-label" for="{{ form.company_name.id_for_label }}">{{ form.company_name.label }}</label>
-                    {{ form.company_name }}
-                    {% if form.company_name.errors %}
-                        <div class="text-danger small">{{ form.company_name.errors|join:", " }}</div>
-                    {% endif %}
                 </div>
-                <div class="col-md-4">
-                    <label class="form-label" for="{{ form.last_name.id_for_label }}">{{ form.last_name.label }}</label>
-                    {{ form.last_name }}
-                    {% if form.last_name.errors %}
-                        <div class="text-danger small">{{ form.last_name.errors|join:", " }}</div>
-                    {% endif %}
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label" for="{{ form.first_name.id_for_label }}">{{ form.first_name.label }}</label>
-                    {{ form.first_name }}
-                    {% if form.first_name.errors %}
-                        <div class="text-danger small">{{ form.first_name.errors|join:", " }}</div>
-                    {% endif %}
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label" for="{{ form.middle_name.id_for_label }}">{{ form.middle_name.label }}</label>
-                    {{ form.middle_name }}
-                    {% if form.middle_name.errors %}
-                        <div class="text-danger small">{{ form.middle_name.errors|join:", " }}</div>
-                    {% endif %}
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label" for="{{ form.phone.id_for_label }}">{{ form.phone.label }}</label>
-                    {{ form.phone }}
-                    {% if form.phone.errors %}
-                        <div class="text-danger small">{{ form.phone.errors|join:", " }}</div>
-                    {% endif %}
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label" for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
-                    {{ form.email }}
-                    {% if form.email.errors %}
-                        <div class="text-danger small">{{ form.email.errors|join:", " }}</div>
-                    {% endif %}
-                </div>
-                <div class="col-12">
-                    <label class="form-label" for="{{ form.notes.id_for_label }}">{{ form.notes.label }}</label>
-                    {{ form.notes }}
-                    {% if form.notes.errors %}
-                        <div class="text-danger small">{{ form.notes.errors|join:", " }}</div>
-                    {% endif %}
-                </div>
-                <div class="col-12">
-                    <button type="submit" class="btn btn-primary">{% if is_edit %}Сохранить{% else %}Создать{% endif %}</button>
-                </div>
-            </form>
+            </div>
         </div>
-    </div>
+
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">Вход в кабинет</div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        OTP и почта для входа отключены. Заказчик входит по ID и паролю, которые вы передаёте лично.
+                    </p>
+                    <div class="row g-3">
+                        {% if client %}
+                            <div class="col-md-4">
+                                <label class="form-label">Внутренний № карточки</label>
+                                <input type="text" class="form-control" value="{{ client.pk }}" readonly>
+                                <div class="form-text">Для сотрудников CRM, не для входа заказчика.</div>
+                            </div>
+                        {% endif %}
+                        <div class="{% if client %}col-md-8{% else %}col-12{% endif %}">
+                            <label class="form-label" for="{{ form.portal_login_id.id_for_label }}">{{ form.portal_login_id.label }}</label>
+                            {{ form.portal_login_id }}
+                            {% if form.portal_login_id.help_text %}
+                                <div class="form-text">{{ form.portal_login_id.help_text }}</div>
+                            {% endif %}
+                            {% if form.portal_login_id.errors %}
+                                <div class="text-danger small">{{ form.portal_login_id.errors|join:", " }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-12">
+                            {% if client and client.has_portal_password %}
+                                <span class="badge text-bg-success">Пароль задан</span>
+                            {% else %}
+                                <span class="badge text-bg-secondary">Пароль не задан</span>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.portal_password.id_for_label }}">{{ form.portal_password.label }}</label>
+                            {{ form.portal_password }}
+                            {% if form.portal_password.help_text %}
+                                <div class="form-text">{{ form.portal_password.help_text }}</div>
+                            {% endif %}
+                            {% if form.portal_password.errors %}
+                                <div class="text-danger small">{{ form.portal_password.errors|join:", " }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.portal_password_confirm.id_for_label }}">{{ form.portal_password_confirm.label }}</label>
+                            {{ form.portal_password_confirm }}
+                            {% if form.portal_password_confirm.errors %}
+                                <div class="text-danger small">{{ form.portal_password_confirm.errors|join:", " }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <button type="submit" class="btn btn-primary">{% if is_edit %}Сохранить{% else %}Создать{% endif %}</button>
+        </div>
+    </form>
 {% endblock %}

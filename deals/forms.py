@@ -256,13 +256,15 @@ class DashboardLeadForm(forms.Form):
     email = forms.EmailField(
         label='Адрес электронной почты',
         required=False,
-        widget=forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'client@example.com'}),
+        widget=forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'не для входа в кабинет'}),
+        help_text='Не используется для входа. Кабинет: ID для входа + пароль (почту и OTP заказчику не шлём).',
     )
     portal_password = forms.CharField(
         label='Пароль для входа клиента',
         required=True,
         min_length=6,
         widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Минимум 6 символов'}),
+        help_text='Вместе с ID для входа (отдельный номер, не № карточки) выдайте заказчику лично, не по email.',
     )
     location = forms.CharField(
         label='Участок (где планируется строительство)',
@@ -317,13 +319,6 @@ class DashboardLeadForm(forms.Form):
         if not value.startswith('+7'):
             raise forms.ValidationError('Номер должен начинаться с +7.')
         return value
-
-    def clean(self):
-        cleaned = super().clean()
-        email = (cleaned.get('email') or '').strip().lower()
-        if not email:
-            self.add_error('email', 'Для входа клиента укажите email.')
-        return cleaned
 
 
 class DealBathroomLineForm(forms.ModelForm):

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -20,7 +21,7 @@ def _request(method: str, path: str, *, query: dict | None = None, body: dict | 
     if query:
         url += "?" + urllib.parse.urlencode({k: v for k, v in query.items() if v not in (None, "")})
     data = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
-    actor = ACTOR.get() or CRM_DEFAULT_ACTOR
+    actor = ACTOR.get() or os.environ.get("CRM_ACTOR", "").strip() or CRM_DEFAULT_ACTOR
     headers = {"Accept": "application/json", "X-Umnik-Actor": actor}
     if MCP_TOKEN:
         headers["Authorization"] = f"Bearer {MCP_TOKEN}"

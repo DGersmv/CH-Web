@@ -7,6 +7,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
 from django.contrib.auth import logout as auth_logout
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.views import LoginView
 from django.db.models import Case, IntegerField, Prefetch, Q, Value, When
 from django.http import FileResponse, Http404, HttpResponseBadRequest, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
@@ -19,7 +20,13 @@ from accounts.forms import EmployeeCreateForm, EmployeeUpdateForm
 from accounts.forms import DashboardMessageForm
 from accounts.events import create_notification, log_audit_event, push_user_event
 from accounts.models import DirectMessage, Notification
-from accounts.permissions import is_file_only_role, is_leadership
+from accounts.permissions import (
+    OWNER_ROLE,
+    assignable_role_choices,
+    is_file_only_role,
+    is_leadership,
+    staff_users_qs,
+)
 from clients.forms import ClientForm
 from clients.models import Client
 from deals.forms import DashboardLeadForm, DealConfiguratorForm, DealFileUploadForm
@@ -216,11 +223,15 @@ def dashboard_employee_create(request):
     if form.is_valid():
         form.save()
         form = EmployeeCreateForm()
-    employees = user_model.objects.order_by('username')
+    employees = staff_users_qs(user_model.objects.all()).order_by('username')
     return render(
         request,
         'includes/dashboard_employees_block.html',
-        {'employees': employees, 'employee_create_form': form},
+        {
+            'employees': employees,
+            'employee_create_form': form,
+            'assignable_role_choices': assignable_role_choices(),
+        },
         status=200 if not form.errors else 400,
     )
 
@@ -231,7 +242,10 @@ def dashboard_employee_update(request, user_id):
     if not is_leadership(request.user):
         return HttpResponseForbidden('Not allowed')
     user_model = get_user_model()
-    employee = get_object_or_404(user_model, pk=user_id)
+    employees_qs = staff_users_qs(user_model.objects.all())
+    employee = get_object_or_404(employees_qs, pk=user_id)
+    if employee.role == OWNER_ROLE:
+        return HttpResponseForbidden('Not allowed')
     form = EmployeeUpdateForm(request.POST, instance=employee)
     if form.is_valid():
         proposed_role = form.cleaned_data['role']
@@ -245,11 +259,15 @@ def dashboard_employee_update(request, user_id):
             if leadership_count <= 1:
                 return HttpResponseForbidden('Cannot remove last leadership user')
         form.save()
-    employees = user_model.objects.order_by('username')
+    employees = employees_qs.order_by('username')
     return render(
         request,
         'includes/dashboard_employees_block.html',
-        {'employees': employees, 'employee_create_form': EmployeeCreateForm()},
+        {
+            'employees': employees,
+            'employee_create_form': EmployeeCreateForm(),
+            'assignable_role_choices': assignable_role_choices(),
+        },
         status=200 if not form.errors else 400,
     )
 
@@ -480,6 +498,18 @@ def client_edit(request, pk):
 def logout_and_redirect(request):
     auth_logout(request)
     return redirect('login')
+
+
+class StaffLoginView(LoginView):
+    """С телефона после входа — в комнаты, с компьютера — на Главную."""
+
+    redirect_authenticated_user = True
+
+    def get_default_redirect_url(self):
+        ua = self.request.META.get('HTTP_USER_AGENT', '')
+        if any(token in ua for token in ('iPhone', 'iPad', 'Android', 'Mobile')):
+            return reverse('app:list')
+        return super().get_default_redirect_url()
 
 
 @login_required

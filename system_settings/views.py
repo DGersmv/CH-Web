@@ -4,12 +4,13 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Q
-from django.http import HttpResponseBadRequest
+from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
 from accounts.forms import EmployeeCreateForm, EmployeeUpdateForm
+from accounts.permissions import OWNER_ROLE, staff_users_qs
 from catalog.models import CostItem, CostItemOption, Section
 from core.views import _section_uses_module_groups, _section_uses_supplier_tabs
 from deals.models import LibraryAsset
@@ -33,10 +34,11 @@ def settings_home(_request):
 @require_http_methods(['GET', 'POST'])
 def settings_employees(request):
     user_model = get_user_model()
+    employees_qs = staff_users_qs(user_model.objects.all()).order_by('username')
     create_form = EmployeeCreateForm()
     update_forms = {
         employee.id: EmployeeUpdateForm(instance=employee)
-        for employee in user_model.objects.order_by('username')
+        for employee in employees_qs
     }
 
     if request.method == 'POST':
@@ -50,7 +52,9 @@ def settings_employees(request):
             employee_id = request.POST.get('employee_id', '').strip()
             if not employee_id.isdigit():
                 return HttpResponseBadRequest('Invalid employee id')
-            employee = get_object_or_404(user_model, pk=int(employee_id))
+            employee = get_object_or_404(employees_qs, pk=int(employee_id))
+            if employee.role == OWNER_ROLE:
+                return HttpResponseBadRequest('Cannot edit platform owner')
             update_form = EmployeeUpdateForm(request.POST, instance=employee)
             if update_form.is_valid():
                 proposed_role = update_form.cleaned_data['role']
@@ -71,7 +75,7 @@ def settings_employees(request):
                 return redirect('settings_employees')
             update_forms[employee.id] = update_form
 
-    employees = user_model.objects.order_by('username')
+    employees = employees_qs
     return render(
         request,
         'system_settings/employees.html',
@@ -371,3 +375,47 @@ def settings_integration_token_delete(request, token_id):
     token = get_object_or_404(IntegrationToken, pk=token_id)
     token.delete()
     return redirect('settings_integrations')
+
+
+@login_required
+@require_POST
+def restart_crm(request):
+    from accounts.events import log_audit_event
+    from accounts.permissions import is_platform_owner
+    from deals.services.umnik import request_umnik_restart, schedule_self_restart
+
+    if not is_platform_owner(request.user):
+        return JsonResponse({'ok': False, 'error': 'forbidden'}, status=403)
+    log_audit_event(
+        actor=request.user,
+        event_type='crm.restart_requested',
+        entity_model='system',
+        payload={'username': request.user.username},
+        request=request,
+    )
+    umnik = request_umnik_restart(actor=request.user.username)
+    if umnik.get('ok'):
+        return JsonResponse(
+            {
+                'ok': True,
+                'via': umnik.get('via') or 'umnik',
+                'answer': umnik.get('answer') or 'Перезапускаю контейнер CRM.',
+            }
+        )
+    fallback = schedule_self_restart()
+    if fallback.get('ok'):
+        return JsonResponse(
+            {
+                'ok': True,
+                'via': 'self',
+                'answer': 'Умник не ответил — перезапускаю процесс CRM в контейнере.',
+            }
+        )
+    return JsonResponse(
+        {
+            'ok': False,
+            'error': umnik.get('error') or fallback.get('error') or 'restart_failed',
+            'answer': 'Не удалось перезапустить CRM. Проверьте умник на хосте или Docker.',
+        },
+        status=503,
+    )

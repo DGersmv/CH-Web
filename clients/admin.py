@@ -9,7 +9,7 @@ class ClientAdminForm(forms.ModelForm):
         label='Пароль для входа клиента',
         required=False,
         widget=forms.PasswordInput(render_value=False),
-        help_text='Оставьте пустым, чтобы не менять текущий пароль.',
+        help_text='Оставьте пустым, чтобы не менять текущий пароль. Вход в кабинет: ID для входа + этот пароль, без почты и OTP.',
     )
 
     class Meta:
@@ -30,8 +30,17 @@ class ClientAdminForm(forms.ModelForm):
 @admin.register(Client)
 class ClientAdmin(admin.ModelAdmin):
     form = ClientAdminForm
-    list_display = ('full_name_display', 'phone', 'email', 'created_at', 'created_by')
-    search_fields = ('last_name', 'first_name', 'middle_name', 'company_name', 'phone', 'email', 'notes')
+    list_display = ('full_name_display', 'portal_login_id', 'phone', 'email', 'created_at', 'created_by')
+    search_fields = (
+        'last_name',
+        'first_name',
+        'middle_name',
+        'company_name',
+        'phone',
+        'email',
+        'notes',
+        'portal_login_id',
+    )
     list_filter = ('created_at',)
     ordering = ('company_name', 'last_name', 'first_name', 'middle_name')
     fields = (
@@ -41,6 +50,7 @@ class ClientAdmin(admin.ModelAdmin):
         'middle_name',
         'phone',
         'email',
+        'portal_login_id',
         'portal_password',
         'notes',
         'created_by',

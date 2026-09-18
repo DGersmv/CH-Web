@@ -1,0 +1,52 @@
+{% extends app_base_template|default:'base.html' %}
+
+{% block title %}Контакты{% endblock %}
+
+{% block sidebar %}
+    <div class="tg-head"><h1>Контакты</h1></div>
+    <label class="tg-search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8d969c" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
+        <input type="search" id="tg-search" placeholder="Поиск" autocomplete="off">
+    </label>
+    <div class="tg-scroll" id="chat-rows">
+        {% if can_use_umnik %}
+            <a class="tg-row" href="{% url rooms_ns|add:':with_umnik' %}" data-search="умник umnik">
+                <div class="tg-avatar" style="background:#1f2933">У</div>
+                <div class="tg-row-body">
+                    <div class="tg-row-title">Умник</div>
+                    <div class="tg-row-preview">Протокол и файлы по сделкам</div>
+                </div>
+            </a>
+        {% endif %}
+        {% for person in people %}
+            <a class="tg-row" href="{{ person.url }}" data-search="{{ person.name }} {{ person.username }} {{ person.role }}">
+                <div class="tg-avatar" style="background: {{ person.color }}">{{ person.initials }}</div>
+                <div class="tg-row-body">
+                    <div class="tg-row-title">{{ person.name }}</div>
+                    <div class="tg-row-preview">{{ person.role }}{% if person.role %} · {% endif %}{{ person.username }}</div>
+                </div>
+            </a>
+        {% empty %}
+            <div class="tg-empty">Пока нет сотрудников в справочнике.</div>
+        {% endfor %}
+    </div>
+{% endblock %}
+
+{% block content %}
+    <div class="tg-placeholder">Выберите контакт, чтобы открыть чат</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var input = document.getElementById('tg-search');
+    if (!input) return;
+    input.addEventListener('input', function () {
+        var q = (input.value || '').toLowerCase();
+        document.querySelectorAll('#chat-rows .tg-row').forEach(function (row) {
+            row.style.display = (row.getAttribute('data-search') || '').toLowerCase().indexOf(q) >= 0 ? '' : 'none';
+        });
+    });
+})();
+</script>
+{% endblock %}

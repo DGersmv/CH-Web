@@ -153,6 +153,18 @@ class Catalog:
         row = self.conn.execute("SELECT COUNT(*) AS n FROM files").fetchone()
         return int(row["n"] if row else 0)
 
+    def checkpoint(self) -> None:
+        with self._lock:
+            self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            self.conn.commit()
+
+    def close(self) -> None:
+        with self._lock:
+            try:
+                self.conn.close()
+            except Exception:
+                pass
+
     def upsert(self, extracted: FileExtract, size: int, mtime: float, indexed_at: float) -> None:
         rel, year, project = path_meta(extracted.path)
         path = str(extracted.path)

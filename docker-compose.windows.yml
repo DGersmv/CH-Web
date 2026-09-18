@@ -1,0 +1,10 @@
+# Только локальная Windows-разработка. На сервере этот файл не подключать.
+services:
+  app:
+    volumes:
+      - "D:/Общая_Рабочая:/mnt/rabochaya:ro"
+      - "./umnik:/mnt/scan_pdf:ro"
+  telegram_bot:
+    volumes:
+      - "D:/Общая_Рабочая:/mnt/rabochaya:ro"
+      - "./umnik:/mnt/scan_pdf:ro"

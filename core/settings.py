@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'tasks',
     'catalog',
     'system_settings',
+    'rooms',
 ]
 
 MIDDLEWARE = [
@@ -145,6 +146,7 @@ STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+WHITENOISE_MAX_AGE = 60 * 60 * 24 * 7
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
@@ -154,8 +156,8 @@ LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'
 
-# Email (used for client portal OTP)
-# Defaults to console backend for local/dev.
+# Почта сотрудников (внутренние уведомления). Заказчикам письма не отправляем:
+# кабинет — вход по ID + пароль, без OTP (ограничения Роскомнадзора).
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'no-reply@ch-crm.local')
 EMAIL_HOST = os.getenv('EMAIL_HOST', '')
@@ -182,6 +184,11 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+# Логин владельца системы (роль superadmin). Не путать с ролью admin.
+PLATFORM_OWNER_USERNAME = (
+    os.getenv('PLATFORM_OWNER_USERNAME', 'superadmin') or 'superadmin'
+).strip() or 'superadmin'
 
 # Архив планировок (умник на LAN). Пустой URL — блок на сделке показывает «не подключён».
 UMNIK_URL = os.getenv('UMNIK_URL', '').strip()
@@ -273,4 +280,9 @@ LOGGING = {
 USE_HTTPS = os.getenv('USE_HTTPS', 'False').lower() == 'true'
 SESSION_COOKIE_SECURE = USE_HTTPS
 CSRF_COOKIE_SECURE = USE_HTTPS
-SECURE_SSL_REDIRECT = USE_HTTPS
+# HTTPS снимает Caddy; Django за прокси не редиректит сам (иначе петля).
+SECURE_SSL_REDIRECT = False
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# Chrome игнорирует COOP на http://IP (не localhost) и пишет ошибку на /accounts/login/.
+# Пока CRM на HTTP без TLS — заголовок не отдаём.
+SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin' if USE_HTTPS else None

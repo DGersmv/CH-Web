@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    restart_crm,
     settings_business,
     settings_catalog,
     settings_catalog_item_create,
@@ -27,6 +28,7 @@ urlpatterns = [
         name='settings_catalog_option_update',
     ),
     path('business/', settings_business, name='settings_business'),
+    path('restart-crm/', restart_crm, name='restart_crm'),
     path('integrations/', settings_integrations, name='settings_integrations'),
     path(
         'integrations/tokens/<int:token_id>/delete/',

@@ -1,0 +1,5 @@
+<div class="tg-filters" role="tablist">
+    {% for key, label in folders %}
+        <a href="{% url rooms_ns|add:':list' %}?folder={{ key }}" class="{% if folder == key %}is-active{% endif %}">{{ label }}</a>
+    {% endfor %}
+</div>

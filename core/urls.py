@@ -95,7 +95,7 @@ from deals.views import (
     client_portal_entry,
     client_portal_message_send,
     client_portal_open_project_file,
-    client_portal_send_otp,
+    client_portal_login,
     client_portal_upload,
     deal_client_message_attach_existing,
     deal_client_message_send,
@@ -118,12 +118,18 @@ from .views import (
     cabinet,
     home,
     logout_and_redirect,
+    StaffLoginView,
 )
+from rooms import views as rooms_views
 from tasks.views import TaskListView, create_task_for_deal, open_task_file, toggle_task
 
 urlpatterns = [
     path('', home, name='home'),
     path('cabinet/', cabinet, name='cabinet'),
+    path('app/manifest.webmanifest', rooms_views.web_manifest, name='app_manifest'),
+    path('app/sw.js', rooms_views.service_worker, name='app_sw'),
+    path('rooms/', include(('rooms.urls', 'rooms'), namespace='rooms')),
+    path('app/', include(('rooms.urls', 'rooms'), namespace='app')),
     path('settings/', include('system_settings.urls')),
     path('api/plugin/project-versions/', PluginProjectVersionCreateApi.as_view(), name='plugin_project_versions_create'),
     path('api/umnik/me/', umnik_me, name='umnik_me'),
@@ -198,7 +204,8 @@ urlpatterns = [
     path('deals/files/<int:file_id>/open/', open_project_file, name='deal_file_open'),
     path('deals/files/<int:file_id>/archive/', archive_project_file, name='deal_file_archive'),
     path('deals/<int:deal_id>/client-portal/', client_portal_entry, name='client_portal_entry'),
-    path('deals/<int:deal_id>/client-portal/send-otp/', client_portal_send_otp, name='client_portal_send_otp'),
+    path('deals/<int:deal_id>/client-portal/login/', client_portal_login, name='client_portal_login'),
+    path('deals/<int:deal_id>/client-portal/send-otp/', client_portal_login, name='client_portal_send_otp'),
     path('deals/<int:deal_id>/client-portal/chat/', client_portal_chat, name='client_portal_chat'),
     path('deals/<int:deal_id>/client-portal/messages/send/', client_portal_message_send, name='client_portal_message_send'),
     path('deals/<int:deal_id>/client-portal/messages/upload/', client_portal_upload, name='client_portal_upload'),
@@ -227,6 +234,7 @@ urlpatterns = [
     path('clients/new/', client_create, name='client_create'),
     path('clients/<int:pk>/edit/', client_edit, name='client_edit'),
     path('accounts/logout/', logout_and_redirect, name='logout'),
+    path('accounts/login/', StaffLoginView.as_view(), name='login'),
     path('accounts/', include('django.contrib.auth.urls')),
     path('admin/', admin.site.urls),
 ]

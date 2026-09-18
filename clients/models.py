@@ -2,6 +2,10 @@ from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import models
 
+PORTAL_LOGIN_ID_BASE = 100000
+PORTAL_LOGIN_ID_MIN_LEN = 4
+PORTAL_LOGIN_ID_MAX_LEN = 12
+
 
 def parse_quick_client_name(raw: str) -> dict:
     """Разбор строки из поля «новый клиент» в поля модели (без сохранения)."""
@@ -46,6 +50,14 @@ class Client(models.Model):
     middle_name = models.CharField('Отчество', max_length=100, blank=True)
     phone = models.CharField(max_length=50, blank=True)
     email = models.EmailField(blank=True)
+    portal_login_id = models.CharField(
+        'ID для входа',
+        max_length=PORTAL_LOGIN_ID_MAX_LEN,
+        unique=True,
+        blank=True,
+        default='',
+        help_text='Отдельный номер для кабинета, не внутренний № карточки.',
+    )
     portal_password_hash = models.CharField(max_length=128, blank=True, default='')
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -74,6 +86,32 @@ class Client(models.Model):
     def __str__(self):
         label = self.full_name
         return label if label else f'Клиент #{self.pk}'
+
+    @property
+    def has_portal_password(self) -> bool:
+        return bool(self.portal_password_hash)
+
+    def assign_portal_login_id(self) -> bool:
+        if self.pk is None:
+            return False
+        current = (self.portal_login_id or '').strip()
+        if current:
+            return False
+        used = set(
+            Client.objects.exclude(pk=self.pk)
+            .exclude(portal_login_id='')
+            .values_list('portal_login_id', flat=True)
+        )
+        candidate = str(PORTAL_LOGIN_ID_BASE + int(self.pk))
+        while candidate in used:
+            candidate = str(int(candidate) + 1)
+        self.portal_login_id = candidate
+        return True
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.assign_portal_login_id():
+            super().save(update_fields=['portal_login_id'])
 
     def set_portal_password(self, raw_password: str) -> None:
         raw = (raw_password or '').strip()

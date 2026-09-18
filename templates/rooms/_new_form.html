@@ -1,0 +1,28 @@
+{% if error %}
+    <div class="alert alert-danger mx-3 mt-2">{{ error }}</div>
+{% endif %}
+<form method="post" class="tg-scroll p-3">
+    {% csrf_token %}
+    <p class="text-muted">Отметьте, с кем общаться. Можно никого не выбирать и добавить только Умника.</p>
+    <div class="list-group mb-3">
+        {% for person in colleagues %}
+            <label class="list-group-item d-flex gap-2 align-items-center">
+                <input class="form-check-input mt-0" type="checkbox" name="user_ids" value="{{ person.id }}">
+                <span>
+                    {{ person.get_full_name|default:person.username }}
+                    <span class="text-muted small">({{ person.username }})</span>
+                </span>
+            </label>
+        {% empty %}
+            <div class="list-group-item text-muted">Других сотрудников пока нет.</div>
+        {% endfor %}
+    </div>
+    {% if can_use_umnik %}
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" name="with_umnik" id="with_umnik">
+            <label class="form-check-label" for="with_umnik">Добавить Умника</label>
+            <div class="form-text">Будет вести протокол и сможет разложить приложенные файлы по сделке.</div>
+        </div>
+    {% endif %}
+    <button type="submit" class="btn btn-primary w-100">Открыть чат</button>
+</form>

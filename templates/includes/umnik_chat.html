@@ -168,9 +168,14 @@
         </div>
     </aside>
     <div id="umnik-main">
-        <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+        <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom gap-2">
             <strong id="umnik-title">Общие вопросы</strong>
-            <span id="umnik-subtitle" class="small text-muted">новый чат</span>
+            <span class="d-flex align-items-center gap-2">
+                <span id="umnik-subtitle" class="small text-muted">новый чат</span>
+                {% if can_restart_crm %}
+                <button id="umnik-restart-crm" type="button" class="btn btn-sm btn-outline-danger" title="Перезапустить контейнер CRM (только app)">Перезапустить CRM</button>
+                {% endif %}
+            </span>
         </div>
         <div id="umnik-log"></div>
         <form id="umnik-form" class="border-top p-2">
@@ -204,6 +209,7 @@
     var attachBtn = document.getElementById('umnik-attach');
     var attachSrvBtn = document.getElementById('umnik-attach-srv');
     var pendingBar = document.getElementById('umnik-pending');
+    var restartBtn = document.getElementById('umnik-restart-crm');
     if (!panel || !toggles.length || !form || !input || !log) return;
 
     var pageDealId = "{% if umnik_deal_id %}{{ umnik_deal_id }}{% endif %}";
@@ -212,7 +218,8 @@
         create: "{% url 'umnik_chat_new' %}",
         send: "{% url 'umnik_chat_send' %}",
         upload: "{% url 'umnik_chat_upload' %}",
-        thread: "{% url 'umnik_chat_thread' 0 %}".replace('/0/', '/')
+        thread: "{% url 'umnik_chat_thread' 0 %}".replace('/0/', '/'),
+        restart: "{% if can_restart_crm %}{% url 'restart_crm' %}{% endif %}"
     };
     var state = {
         threads: [],
@@ -701,6 +708,36 @@
               add('err', 'Сеть не дошла до умника.');
           });
     });
+    if (restartBtn && urls.restart) {
+        restartBtn.addEventListener('click', function () {
+            if (restartBtn.disabled) return;
+            if (!window.confirm('Перезапустить CRM? Сайт на несколько секунд станет недоступен. Базу и умника не трогаем.')) {
+                return;
+            }
+            restartBtn.disabled = true;
+            var waiting = add('assistant', 'Перезапускаю CRM…');
+            fetch(urls.restart, {
+                method: 'POST',
+                headers: headers(),
+                body: '{}'
+            }).then(function (res) { return res.json().then(function (data) { return {ok: res.ok, data: data}; }); })
+              .then(function (pack) {
+                  waiting.remove();
+                  var answer = (pack.data && pack.data.answer) || (pack.ok ? 'Перезапуск запрошен.' : 'Не удалось перезапустить.');
+                  add(pack.ok ? 'assistant' : 'err', answer);
+                  if (pack.ok) {
+                      window.setTimeout(function () { window.location.reload(); }, 4000);
+                  } else {
+                      restartBtn.disabled = false;
+                  }
+              })
+              .catch(function () {
+                  waiting.remove();
+                  add('err', 'Запрос на перезапуск не дошёл.');
+                  restartBtn.disabled = false;
+              });
+        });
+    }
 })();
 </script>
 {% endif %}

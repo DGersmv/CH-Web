@@ -202,7 +202,8 @@ print(t.is_done, t.completed_at)
 - [ ] Inline ProjectVersion виден внутри сделки
 
 **ClientAdmin:**
-- [ ] Поиск по ФИО, телефону, email
+- [ ] Поиск по ФИО, телефону, email (email не логин кабинета)
+- [ ] Пароль кабинета задаётся отдельно; вход заказчика — ID + пароль, без OTP
 
 **TaskAdmin:**
 - [ ] Фильтры: is_done, assignee, due_date

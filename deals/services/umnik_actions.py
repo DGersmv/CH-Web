@@ -9,7 +9,7 @@ from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
 
-from accounts.permissions import can_delete_deals, can_edit_deals, umnik_capabilities
+from accounts.permissions import can_attach_design_files, can_delete_deals, can_edit_deals, umnik_capabilities
 from deals.forms import DealConfiguratorForm
 from deals.models import ChangeLog, Deal, ProjectVersion, normalize_project_code
 from deals.services.bathrooms import bathrooms_count_from_config, ensure_bathrooms
@@ -571,9 +571,12 @@ def _approval_payload(approval) -> dict:
 
 
 def attach_design_file(deal: Deal, user, fields: dict) -> dict:
-    blocked = _forbid_edit(user)
-    if blocked:
-        return blocked
+    if not can_attach_design_files(user):
+        return {
+            'ok': False,
+            'error': 'forbidden',
+            'detail': 'Нет права класть файлы в сделку.',
+        }
     from deals.services.design import attach_file_to_design_section
 
     data = fields or {}
