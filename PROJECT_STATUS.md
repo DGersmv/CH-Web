@@ -186,6 +186,7 @@ docker compose --profile https logs -f caddy app
 
 | Тема | Путь |
 |------|------|
+| Runbook комнат (маршруты, Умник, PWA, сбои) | `docs/staff-messenger.md` |
 | Модели/логика комнат | `rooms/models.py`, `rooms/services.py`, `rooms/views.py` |
 | Тесты мессенджера | `rooms/tests.py` |
 | Оболочка PWA | `templates/rooms/app_base.html` |

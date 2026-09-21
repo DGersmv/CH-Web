@@ -65,6 +65,11 @@
 ### Наценка
 Хранится как параметр (% на Deal), применяется при расчёте итога. Не зашита в формулы.
 
+### Комнаты сотрудников
+Мессенджер в приложении `rooms`: личные/групповые чаты, файлы, голосовые, Умник как участник. Два URL на одни views — `/app/` (PWA) и `/rooms/` (пункт «Комнаты» в CRM). Это не виджет Умника на карточке сделки и не Telegram.
+
+Создание из UI не привязывает комнату к `Deal` (поле есть, фильтр «Клиенты» смотрит на него). Ответ Умника уходит в фоне, UI опрашивает ленту. Подробности: `docs/staff-messenger.md`.
+
 ## 4. Модель данных (общий обзор)
 
 ```
@@ -125,13 +130,20 @@ Task (задачи менеджера)
 
 User (расширение стандартного Django User)
   - role                         'manager'|'designer'|'production'|'admin'|'head'|'superadmin'
+
+Room (мессенджер сотрудников)
+  - title, status open|archived
+  - deal                         FK → Deal, nullable; из UI пока не заполняется
+  - members                      user и не более одного umnik
+  - messages                     text | file | voice_note | system | umnik
+  - вложения                     {CRM_FILES_ROOT}/rooms/{id}/
 ```
 
 ## 5. Стек
 
 - **Backend:** Django 5 + Django REST Framework (для API плагина)
 - **DB:** PostgreSQL 16
-- **Frontend:** Django templates + HTMX + Alpine.js для интерактивности на старте. Конфигуратор с живым пересчётом возможно переедет на React (решаем в фазе 5).
+- **Frontend:** Django templates + HTMX + Bootstrap из `static/vendor/` (не CDN). PWA комнат: `templates/rooms/app_base.html` + `static/css/messenger.css`. Конфигуратор с живым пересчётом возможно переедет на React (решаем в фазе 5).
 - **Файлы сделок и заказчиков:** объектное хранилище S3 (`ch-crm-files`). Локальный диск CRM — только кэш/временные файлы, не источник правды.
 - **Аутентификация:** Django стандартная для людей, DRF token для плагина.
 - **Деплой:** Docker Compose на облачном VPS (app + Postgres + Redis + telegram-бот + nginx + HTTPS). Умный умник — **systemd на хосте**, не контейнер.
@@ -214,6 +226,8 @@ S3 — один бакет **`ch-crm`** (Cloud.ru Object Storage, endpoint `http
 Отказываться. Этот документ — источник правды. Если появляется новое требование, сначала обновляется этот документ, потом код.
 
 ## 8. Версия документа
+
+v1.4 — мессенджер сотрудников (`rooms`): `/app/` и `/rooms/`, Умник в фоне, см. `docs/staff-messenger.md`.
 
 v1.3 — владелец системы (логин `admin` / superuser): правки кода через умника на хосте VPS и кнопка перезапуска только контейнера `app`.
 
