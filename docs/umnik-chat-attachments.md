@@ -47,3 +47,6 @@ CRM шлёт POST на `${UMNIK_URL}/crm/chat`. В теле — поле `attach
 Без изменений: умник может вернуть `attachments` — список путей в разрешённых
 корнях (`D:\Общая_Рабочая`, `D:\Scan_Pdf`, `D:\CH-CRM\crm_files`), CRM сам
 скопирует их в папку чата.
+
+Тот же контракт вложений использует мессенджер сотрудников (`rooms.services.model_attachments`).
+См. `docs/staff-messenger.md`.

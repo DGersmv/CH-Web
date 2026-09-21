@@ -59,12 +59,15 @@ docker compose exec db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select cou
 curl -I http://localhost:8001/static/img/logo.jpg
 ```
 
-Если UI отображается без стилей, проверь доступ сервера к CDN:
+Bootstrap и HTMX отдаются **с диска** (`static/vendor/`), не с CDN. Если UI без стилей:
 
 ```bash
-curl -I https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css
-curl -I https://unpkg.com/htmx.org@1.9.12
+curl -I http://localhost:8001/static/vendor/bootstrap/bootstrap.min.css
+curl -I http://localhost:8001/static/vendor/htmx/htmx.min.js
+docker compose exec app python manage.py collectstatic --noinput
 ```
+
+На проде с Caddy статика идёт из `./staticfiles` (`docker compose --profile https up -d`).
 
 ## Миграции
 
@@ -90,6 +93,17 @@ docker compose exec app python manage.py ensure_superadmin
 
 Django admin: `http://localhost:8001/admin/`
 
+## Мессенджер сотрудников
+
+Два входа в один код (`rooms/`):
+
+- Телефон / PWA: `http://localhost:8001/app/` (после логина с iPhone/Android редирект сюда сам).
+- Десктоп-CRM: пункт меню **Комнаты** (`/rooms/`).
+
+Чат с Умником, файлы и голосовые — в `docs/staff-messenger.md`. Установка на Домой: `/app/settings/` → «На экран Домой» (нужен HTTPS).
+
+Это не чат на карточке сделки и не Telegram-бот диспетчерской.
+
 ## Кабинет заказчика
 
 Почта для клиентов **не используется** (ограничения Роскомнадзора). OTP и письма со ссылкой не отправляем.
@@ -101,6 +115,18 @@ Django admin: `http://localhost:8001/admin/`
 - По умолчанию проект хранит файлы в `crm_files` внутри корня репозитория.
 - Переопределить корень можно через переменную окружения `CRM_FILES_ROOT`.
 - Файлы раскладываются по структуре клиент/проект/источник (заказчик или проектировщик), пути в БД сохраняются относительными.
+- Вложения комнат: `crm_files/rooms/<room_id>/`.
+
+## Документация
+
+| Тема | Файл |
+|------|------|
+| Снимок «что работает сейчас» | `PROJECT_STATUS.md` |
+| Контекст для AI / архитектура | `ARCHITECTURE.md` |
+| Комнаты / PWA / Умник в чате | `docs/staff-messenger.md` |
+| Telegram-бот диспетчерской | `docs/telegram-bot.md` |
+| Вложения чата умника | `docs/umnik-chat-attachments.md` |
+| Query-умник на VPS | `umnik/SETUP_QUERY.md` |
 
 ## Состояние проекта
 
