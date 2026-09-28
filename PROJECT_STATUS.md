@@ -187,6 +187,7 @@ docker compose --profile https logs -f caddy app
 | Тема | Путь |
 |------|------|
 | Модели/логика комнат | `rooms/models.py`, `rooms/services.py`, `rooms/views.py` |
+| Поиск шапки, колокольчик, `/api/messages/` | `docs/inbox-search-and-notifications.md` |
 | Тесты мессенджера | `rooms/tests.py` |
 | Оболочка PWA | `templates/rooms/app_base.html` |
 | Стили Telegram-like | `static/css/messenger.css` |
