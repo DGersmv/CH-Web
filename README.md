@@ -113,3 +113,5 @@ Django admin: `http://localhost:8001/admin/`
 5. `Производство`
 6. `Монтаж / Установка`
 7. `Сдача клиенту`
+
+Поиск в шапке, колокольчик и API личных сообщений (`/api/messages/`) описаны в `docs/inbox-search-and-notifications.md`. Это не мессенджер `/app/`.
