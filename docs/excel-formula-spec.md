@@ -1,5 +1,7 @@
 # Excel Formula Spec (v1)
 
+Страницы, которые вызывают этот расчёт, закрыты флагом `CONFIGURATOR_ENABLED` (по умолчанию выключен). Менеджер сохраняет цену вручную: [agreed-price.md](agreed-price.md). Ниже — поведение `calculate_config`, код не удалён.
+
 Источник: `WEB/added/calculation_items.csv` (рабочая структура строк из Excel-шаблона).
 
 ## Входы (excel -> internal_key)
