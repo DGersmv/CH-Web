@@ -59,11 +59,11 @@ docker compose exec db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select cou
 curl -I http://localhost:8001/static/img/logo.jpg
 ```
 
-Если UI отображается без стилей, проверь доступ сервера к CDN:
+Стили и HTMX лежат в репозитории (`static/vendor/`), не на CDN. Если страница без вёрстки, проверь, что `collectstatic` отдал их в `staticfiles` и что файл открывается:
 
 ```bash
-curl -I https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css
-curl -I https://unpkg.com/htmx.org@1.9.12
+curl -I http://localhost:8001/static/vendor/bootstrap/bootstrap.min.css
+curl -I http://localhost:8001/static/vendor/htmx/htmx.min.js
 ```
 
 ## Миграции
@@ -82,7 +82,7 @@ docker compose exec app python manage.py makemigrations
 
 ## Владелец системы
 
-Учётка `superadmin` создаётся при старте контейнера командой `ensure_superadmin` (роль не выдаётся в разделе «Сотрудники»).
+Учётка `superadmin` создаётся при старте контейнера командой `ensure_superadmin` (роль не выдаётся в разделе «Сотрудники»). Кто что видит в CRM: `docs/roles-and-access.md`.
 
 ```bash
 docker compose exec app python manage.py ensure_superadmin
