@@ -61,10 +61,13 @@
 
 ### Current implementation
 - Таблица очереди: `system_settings.PlatformJob`
-- Команда запуска: `python manage.py run_platform_jobs`
-- Первый реальный handler: `cleanup_expired_portal_access`
+- Команда запуска вручную: `python manage.py run_platform_jobs` (в compose и entrypoint её нет)
+- Единственный handler: `cleanup_expired_portal_access` — его никто сам в очередь не ставит
+- `enqueue_follow_up=True` поставил бы `domain_event_follow_up`, но таких вызовов нет и handler на этот тип не зарегистрирован
 
-Это intentionally small queue layer на базе БД. Следующий шаг, если нагрузка вырастет, — вынести worker в отдельный процесс/сервис.
+Подробности, ограничения и как прогнать очистку сессий: `docs/platform-jobs.md`.
+
+Это intentionally small queue layer на базе БД. Следующий шаг, если нагрузка вырастет, — вынести worker в отдельный процесс/сервис. Напоминания по задачам и поиск зависших сделок в коде ещё не сделаны.
 
 ## Integration Surface
 
@@ -82,9 +85,8 @@
 
 ## Business Settings
 
-Сейчас в `system_settings.SystemConfig` поддерживаются:
-- `default_margin_percent`
-- `stale_deal_days`
-- `task_reminder_hours`
+Сейчас в `system_settings.SystemConfig` хранятся:
+- `default_margin_percent` — читается при создании новой сделки (`get_default_margin_percent`, пустое значение → 30)
+- `stale_deal_days` и `task_reminder_hours` — только сохраняются формой `/settings/business/` и ни одним job или view не читаются
 
-Эти параметры должны применяться ко всем новым процессам, а не зашиваться в form/view constants.
+Не считать два последних ключа рабочими порогами, пока под них нет обработчика. См. `docs/platform-jobs.md`.
