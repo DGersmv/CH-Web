@@ -36,7 +36,7 @@
 
 ## First Automation Events
 
-События, которые уже стоит считать платформенными:
+`TOP_DOMAIN_EVENTS` в `system_settings/events.py` — пять имён, которые страница `/settings/integrations/` показывает подписью «Поддерживаются события»:
 
 1. `deal.status_changed`
 2. `project_version.imported`
@@ -44,11 +44,9 @@
 4. `task.created`
 5. `client_message.sent`
 
-Они уже публикуются через `system_settings.events.record_domain_event()` и могут стать источником:
-- outbound webhooks
-- автоматических уведомлений
-- фоновых обработчиков
-- аналитики и аудита
+Это не фильтр ленты Главной и не контракт плагина. Плагин пишет только `project_version.imported`. Лента читает более широкий `FEED_EVENT_TYPES` и отбрасывает остальные записанные типы. Что именно попадает на экран, какие тексты и ссылки, и какие действия журнал не видит: `docs/activity-feed.md`.
+
+Сама запись — `record_domain_event()` → строка `AuditEvent`. Исходящих вебхуков и автоматических уведомлений из этих событий сейчас нет. Флаг `enqueue_follow_up` ни один вызов не передаёт.
 
 ## Async Jobs Scope
 
