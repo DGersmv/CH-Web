@@ -13,6 +13,8 @@
 - `system_settings`: системные настройки, integration tokens, platform jobs, административные справочники.
 - `core`: маршрутизация, глобальная навигация, общие страницы.
 
+Личные сообщения сотрудников (`accounts.DirectMessage`) — отдельный от комнат канал. Рабочий мессенджер — `/app/` и `/rooms/`. У `DirectMessage` форма на Главную не подключена, а `POST /api/messages/` не создаёт уведомление. Маршруты, два пути отправки и ограничения: `docs/direct-messages.md`.
+
 ### Coupling to reduce over time
 - Роли и доступ сейчас проверяются прямо в views через `is_file_only_role()` и `is_leadership()`.
 - Справочник каталога частично редактируется внутри deal-flow.
