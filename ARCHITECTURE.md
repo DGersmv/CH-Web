@@ -157,7 +157,7 @@ D:\Общая_Рабочая  →  умник-индексатор (офис)
 ```
 
 - CRM **всегда** ходит только в облачный умник: `UMNIK_URL` = query-сервис на VPS. Офисный индексатор в `UMNIK_URL` не указывают.
-- Lookup: `GET {UMNIK_URL}/crm/lookup?query=...` с `Authorization: Bearer {UMNIK_TOKEN}`. Ответ — комнаты и м² из таблиц индекса. OpenRouter из CRM не вызывается.
+- Lookup: `GET {UMNIK_URL}/crm/lookup?query=...` с `Authorization: Bearer {UMNIK_TOKEN}`. Ответ — комнаты и м² из таблиц индекса. OpenRouter из CRM не вызывается. Запрос по сделке, лимиты 5/20 и таймаут 3 с: [docs/layout-archive.md](docs/layout-archive.md).
 - Если query-умник не отвечает, сделка открывается как обычно — блок архива показывает заглушку.
 - Писать в архив PDF из CRM нельзя. Индексатор тоже в архив не пишет — только читает шару.
 - Чат умника в UI виден любому вошедшему сотруднику: `POST {UMNIK_URL}/crm/chat`. Поиск проектов в чате — по индексу на сервере, не через офисный Qwen.
