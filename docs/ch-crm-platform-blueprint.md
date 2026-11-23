@@ -72,7 +72,7 @@
 - Endpoint: `POST /api/plugin/project-versions/`
 - Поддерживается аутентификация через `IntegrationTokenAuthentication` и DRF tokens.
 - Управление токенами доступно в `/settings/integrations/`.
-- Outbound к умнику: `GET {UMNIK_URL}/crm/lookup` — комнаты и м² по сделке. `UMNIK_URL` — облачный query-умник, не офисный индексатор. Настройки: `UMNIK_URL`, `UMNIK_TOKEN` в `.env`.
+- Outbound к умнику: `GET {UMNIK_URL}/crm/lookup` — комнаты и м² по сделке (страница `/archive/` — тот же lookup со свободной строкой). `UMNIK_URL` — облачный query-умник, не офисный индексатор. Настройки: `UMNIK_URL`, `UMNIK_TOKEN` в `.env`. Рабочий разбор запроса и ошибок: [layout-archive.md](layout-archive.md).
 
 ### Near-term roadmap
 1. Добавить отдельные inbound endpoints по типам интеграций.
